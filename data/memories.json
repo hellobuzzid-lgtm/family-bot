@@ -1,0 +1,30 @@
+[
+  {
+    "id": "mem_1",
+    "category": "family",
+    "fact": "Ayah dan Ibu sedang LDR karena pekerjaan Ayah di luar kota, anak ingin keluarga tetap hangat dan sering teleponan/chat",
+    "importance": 10,
+    "createdAt": "2026-10-01T00:00:00.000Z"
+  },
+  {
+    "id": "mem_2",
+    "category": "father",
+    "fact": "Ayah suka kopi dan suka kerja sampai malam, anak selalu ingatkan Ayah jangan lupa istirahat",
+    "importance": 8,
+    "createdAt": "2026-10-01T00:00:00.000Z"
+  },
+  {
+    "id": "mem_3",
+    "category": "mother",
+    "fact": "Ibu paling sayang dan telaten, suka masakin sup ayam atau ayam kecap kalau di rumah",
+    "importance": 8,
+    "createdAt": "2026-10-01T00:00:00.000Z"
+  },
+  {
+    "id": "mem_4",
+    "category": "child",
+    "fact": "Anak sangat suka es krim rasa stroberi dan cokelat, suka menggambar hewan dan pelangi, tapi takut suara petir keras",
+    "importance": 9,
+    "createdAt": "2026-10-01T00:00:00.000Z"
+  }
+]
