@@ -58,6 +58,10 @@ export const config = {
   fatherJid: toJid(process.env.FATHER_PHONE),
   motherJid: toJid(process.env.MOTHER_PHONE),
 
+  // Bot Pairing Phone (untuk login kode pairing tanpa scan QR)
+  botPhone: normalizePhone(process.env.BOT_PHONE || process.env.PAIRING_NUMBER),
+  usePairingCode: process.env.USE_PAIRING_CODE === 'true' || !!(process.env.BOT_PHONE || process.env.PAIRING_NUMBER),
+
   // WhatsApp Group Target
   targetGroupName: process.env.TARGET_GROUP_NAME || '',
   targetGroupJid: process.env.TARGET_GROUP_JID || '',

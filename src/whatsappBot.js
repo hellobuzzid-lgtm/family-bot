@@ -34,22 +34,51 @@ export class WhatsAppBot {
 
     console.log(`[WhatsAppBot] Initializing WhatsApp Socket (Baileys v${version.join('.')}, isLatest: ${isLatest})...`);
 
+    const browser = config.usePairingCode
+      ? ['Ubuntu', 'Chrome', '20.0.04']
+      : ['NEX Family Virtual Child', 'Chrome', '1.0.0'];
+
     this.sock = makeWASocket({
       version,
       logger,
-      printQRInTerminal: false,
+      printQRInTerminal: !config.usePairingCode,
       auth: state,
-      browser: ['NEX Family Virtual Child', 'Chrome', '1.0.0'],
+      browser,
       generateHighQualityLinkPreview: true,
       syncFullHistory: false
     });
 
     this.sock.ev.on('creds.update', saveCreds);
 
+    // Pairing Code Handler
+    if (config.usePairingCode && !this.sock.authState.creds.registered) {
+      if (!config.botPhone) {
+        console.warn('⚠️ [WhatsAppBot] USE_PAIRING_CODE aktif tetapi nomor BOT_PHONE belum diisi di .env / Variables!');
+      } else {
+        setTimeout(async () => {
+          try {
+            console.log(`[WhatsAppBot] Menghubungi WhatsApp untuk meminta kode pairing ke: ${config.botPhone}...`);
+            const code = await this.sock.requestPairingCode(config.botPhone);
+            console.log('\n======================================================');
+            console.log(`🔑 KODE PAIRING WHATSAPP ANDA: 👉 ${code} 👈`);
+            console.log('======================================================');
+            console.log('Langkah Menautkan di HP:');
+            console.log('1. Buka aplikasi WhatsApp di HP Anda');
+            console.log('2. Buka Setelan > Perangkat Tertaut > Tautkan Perangkat');
+            console.log('3. Klik opsi di bawah: "Tautkan dengan nomor telepon saja"');
+            console.log(`4. Masukkan 8 karakter kode pairing: ${code}`);
+            console.log('======================================================\n');
+          } catch (err) {
+            console.error('❌ [WhatsAppBot] Gagal meminta kode pairing:', err.message);
+          }
+        }, 4000);
+      }
+    }
+
     this.sock.ev.on('connection.update', (update) => {
       const { connection, lastDisconnect, qr } = update;
 
-      if (qr) {
+      if (qr && !config.usePairingCode) {
         console.log('\n======================================================');
         console.log('📱 SCAN QR CODE BERIKUT DENGAN WHATSAPP:');
         console.log('1. Buka WhatsApp di HP Anda');
