@@ -105,12 +105,12 @@
     "21:00-06:00": "Tidur malam nyenyak"
   },
   "telemetry": {
-    "lastActiveAt": "2026-10-02T17:43:09.919Z",
-    "lastMessageSentAt": "2026-10-02T17:43:09.919Z",
+    "lastActiveAt": "2026-10-03T02:50:33.738Z",
+    "lastMessageSentAt": "2026-10-03T02:50:33.738Z",
     "lastSpontaneousMessageAt": null,
     "lastMoneyAskedAt": null,
     "targetGroupId": "120363429574214127@g.us",
-    "totalMessagesSent": 2,
+    "totalMessagesSent": 3,
     "totalInteractions": 0
   }
 }

@@ -38,5 +38,29 @@
     "role": "child",
     "text": "Hoaamm.. tadi udah bobo, kebangun dikit denger hp 🥱 \n\nCia ngantuk bangett, bobo lagi yaaa.. Jangan begadang yaa 😴❤️",
     "timestamp": "2026-10-02T17:43:09.920Z"
+  },
+  {
+    "id": "msg_1790995817960_33",
+    "senderJid": "46944277819513@lid",
+    "senderName": "Ayah",
+    "role": "father",
+    "text": "p",
+    "timestamp": "2026-10-03T02:50:17.960Z"
+  },
+  {
+    "id": "msg_1790995833739_788",
+    "senderJid": "bot",
+    "senderName": "Cia",
+    "role": "child",
+    "text": "Ehehe Cia tadi ketiduran bentar... 🥺 Cia di sini kok Ayah dan Ibu!",
+    "timestamp": "2026-10-03T02:50:33.739Z"
+  },
+  {
+    "id": "msg_1790995914931_199",
+    "senderJid": "46944277819513@lid",
+    "senderName": "Ayah",
+    "role": "father",
+    "text": "hari ini ga sekolah ?",
+    "timestamp": "2026-10-03T02:51:54.931Z"
   }
 ]

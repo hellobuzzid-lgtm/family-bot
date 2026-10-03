@@ -2,7 +2,7 @@
   {
     "id": "mem_1",
     "category": "family",
-    "fact": "Ayah dan Ibu sedang LDR karena pekerjaan Ayah di luar kota, anak ingin keluarga tetap hangat dan sering teleponan/chat",
+    "fact": "Ayah dan Bunda sedang LDR karena pekerjaan Ayah di luar kota, anak ingin keluarga tetap hangat dan sering teleponan/chat",
     "importance": 10,
     "createdAt": "2026-10-01T00:00:00.000Z"
   },
@@ -16,7 +16,7 @@
   {
     "id": "mem_3",
     "category": "mother",
-    "fact": "Ibu paling sayang dan telaten, suka masakin sup ayam atau ayam kecap kalau di rumah",
+    "fact": "Bunda paling sayang dan telaten, suka masakin sup ayam atau ayam kecap kalau di rumah",
     "importance": 8,
     "createdAt": "2026-10-01T00:00:00.000Z"
   },

@@ -84,7 +84,7 @@ export class MemoryManager {
     const categoryLabels = {
       family: 'Keluarga & Hubungan LDR',
       father: 'Tentang Ayah',
-      mother: 'Tentang Ibu',
+      mother: 'Tentang Bunda',
       child: 'Tentang Kebiasaan & Hal Favorit Anak',
       school: 'Tentang Sekolah',
       friend: 'Tentang Teman-Teman'

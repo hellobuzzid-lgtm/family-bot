@@ -136,13 +136,13 @@ export class GeminiService {
         }
       }
 
-      return 'Ehehe... tadi Cia lagi bengong bentar, ada apa Ayah/Ibu? 😆';
+      return 'Ehehe... tadi Cia lagi bengong bentar, ada apa Ayah/Bunda? 😆';
     } catch (err) {
       console.error('❌ [GeminiService] Error calling Gemini API:', err.message);
       if (!config.geminiApiKey?.startsWith('AIzaSy')) {
         console.error('⚠️ [GeminiService] CATATAN: GEMINI_API_KEY saat ini bukan API Key Google AI Studio yang valid (harus diawali "AIzaSy...").');
       }
-      return 'Ehehe Cia tadi ketiduran bentar... 🥺 Cia di sini kok Ayah dan Ibu!';
+      return 'Ehehe Cia tadi ketiduran bentar... 🥺 Cia di sini kok Ayah dan Bunda!';
     }
   }
 
@@ -162,16 +162,16 @@ export class GeminiService {
 
     const systemPrompt = `
 Kamu adalah evaluator virtual child AI (${config.childName}, 6 tahun).
-Tugasmu adalah menentukan apakah anak kecil ini memiliki alasan yang BENAR-BENAR ALAMI untuk mengirim 1 pesan spontan pendek di grup keluarga WhatsApp Ayah dan Ibu sekarang.
+Tugasmu adalah menentukan apakah anak kecil ini memiliki alasan yang BENAR-BENAR ALAMI untuk mengirim 1 pesan spontan pendek di grup keluarga WhatsApp Ayah dan Bunda sekarang.
 
 Prinsip Aturan 7 & 8:
 - JANGAN TERLALU AKTIF: Anak tidak harus selalu berbicara tanpa henti. Memiliki kemampuan untuk diam adalah keharusan.
-- Jangan mengirim pesan jika obrolan Ayah dan Ibu sedang sangat serius atau tidak ada konteks.
-- ALASAN TERBAIK & UTAMA: RASA KANGEN PADA AYAH & IBU (KARENA LDR). Jika grup sudah hening beberapa jam, anak manja berusia 6 tahun ini sering tiba-tiba rindu dan ingin tahu kabar orang tuanya:
-  * Menanyakan lagi ngapain: "Ayahhh sama Ibu lagi ngapain sekarang? Cia kangeeenn 🥺"
-  * Perhatian manis: "Ayah lagi sibuk kerja ya? Jangan lupa makan siang ya Ayah ❤️"
-  * Cari teman ngobrol: "Ibuuu... Cia lagi sendirian nih, Ibu lagi apa? 🥺👉👈"
-  * Spontan cerita sehabis pulang sekolah atau saat jam santai sore.
+- Jangan mengirim pesan jika obrolan Ayah dan Bunda sedang sangat serius atau tidak ada konteks.
+- ALASAN TERBAIK & UTAMA: RASA KANGEN PADA AYAH & BUNDA (KARENA LDR). Jika grup sudah hening beberapa jam, anak manja berusia 6 tahun ini sering tiba-tiba rindu dan ingin tahu kabar orang tuanya:
+  * Menanyakan lagi ngapain: "Ayahhh sama Bundaaa lagi ngapain sekarang? Cia kangeeenn 🥺"
+  * Perhatian manis: "Ayah lagi sibuk kerja ya? Jangan lupa makan siang ya Ayah ❤️" atau "Bundaaa jangan capek-capek yaa ❤️"
+  * Cari teman ngobrol: "Bundaaa... Cia lagi sendirian nih, Bunda lagi apa? 🥺👉👈"
+  * Spontan cerita sehabis santai sore atau kegiatan hari ini.
 
 Jawablah HANYA dalam format JSON valid tanpa markdown wrapper:
 {
