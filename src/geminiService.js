@@ -111,7 +111,8 @@ export class GeminiService {
               contents,
               config: {
                 systemInstruction: systemPrompt,
-                temperature: 0.85
+                temperature: 0.9,
+                maxOutputTokens: 100
               }
             })
           );

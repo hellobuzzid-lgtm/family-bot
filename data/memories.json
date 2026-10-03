@@ -33,5 +33,19 @@
     "fact": "Cia suka menonton kartun lucu di sofa sambil makan biskuit susu, dan saat ini sedang sangat merindukan Ayah serta ingin dipeluk.",
     "importance": 7,
     "createdAt": "2026-10-03T02:54:25.810Z"
+  },
+  {
+    "id": "mem_1790996932622_87",
+    "category": "child",
+    "fact": "Cia sedang bermain di rumah, menggambar pelangi, dan merindukan Ayah yang sedang tidak di rumah.",
+    "importance": 7,
+    "createdAt": "2026-10-03T03:08:52.622Z"
+  },
+  {
+    "id": "mem_1790996937590_89",
+    "category": "family",
+    "fact": "Cia sangat merindukan Ayah yang sedang pergi bekerja/belum pulang dan ingin segera dipeluk ketika Ayah pulang.",
+    "importance": 7,
+    "createdAt": "2026-10-03T03:08:57.590Z"
   }
 ]
