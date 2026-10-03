@@ -7,6 +7,8 @@ import makeWASocket, {
 import pino from 'pino';
 import qrcode from 'qrcode-terminal';
 import { Boom } from '@hapi/boom';
+import fs from 'fs';
+import path from 'path';
 import { config, normalizePhone } from './config.js';
 
 export class WhatsAppBot {
@@ -134,10 +136,11 @@ export class WhatsAppBot {
     const isGroup = chatJid.endsWith('@g.us');
     const senderJid = isGroup ? (msg.key.participant || msg.key.remoteJid) : chatJid;
     const senderPhone = normalizePhone(senderJid);
+    const participantPn = msg.key?.participantPn ? normalizePhone(msg.key.participantPn) : '';
     const pushName = msg.pushName || 'Keluarga';
 
     // Identify speaker
-    const speakerInfo = this.identifySpeaker(senderPhone, pushName, senderJid);
+    const speakerInfo = this.identifySpeaker(senderPhone, pushName, senderJid, participantPn);
 
     // Extract text content and media from message
     const { text, mediaType, mediaMessage } = this.extractMessageContent(msg);
@@ -231,24 +234,49 @@ export class WhatsAppBot {
     }
   }
 
-  identifySpeaker(senderPhone, pushName, senderJid) {
-    if (config.fatherPhone && senderPhone.includes(config.fatherPhone)) {
-      return { role: 'father', name: config.fatherName, jid: senderJid };
+  identifySpeaker(senderPhone, pushName, senderJid, participantPn = '') {
+    let resolvedPhone = senderPhone;
+
+    // 1. If participantPn is available directly from Baileys
+    if (participantPn) {
+      resolvedPhone = normalizePhone(participantPn);
     }
-    if (config.motherPhone && senderPhone.includes(config.motherPhone)) {
-      return { role: 'mother', name: config.motherName, jid: senderJid };
+
+    // 2. If sender is a WhatsApp LID (e.g. 46944277819513@lid), check Baileys reverse LID mapping
+    if (senderJid && senderJid.endsWith('@lid')) {
+      const lidDigits = senderJid.replace(/\D/g, '');
+      const reverseFile = path.join(config.authDir, `lid-mapping-${lidDigits}_reverse.json`);
+      if (fs.existsSync(reverseFile)) {
+        try {
+          const raw = JSON.parse(fs.readFileSync(reverseFile, 'utf-8'));
+          if (raw) resolvedPhone = normalizePhone(raw);
+        } catch (_) {}
+      }
+    }
+
+    // Match phone number with Father or Mother
+    if (config.fatherPhone && resolvedPhone && resolvedPhone.includes(config.fatherPhone)) {
+      return { role: 'father', name: config.fatherName, jid: senderJid, phone: resolvedPhone };
+    }
+    if (config.motherPhone && resolvedPhone && resolvedPhone.includes(config.motherPhone)) {
+      return { role: 'mother', name: config.motherName, jid: senderJid, phone: resolvedPhone };
     }
 
     // Secondary fallback matching on pushName if configured phone is missing
     const nameLower = (pushName || '').toLowerCase();
     if (nameLower.includes(config.fatherName.toLowerCase())) {
-      return { role: 'father', name: config.fatherName, jid: senderJid };
+      return { role: 'father', name: config.fatherName, jid: senderJid, phone: resolvedPhone };
     }
     if (nameLower.includes(config.motherName.toLowerCase())) {
-      return { role: 'mother', name: config.motherName, jid: senderJid };
+      return { role: 'mother', name: config.motherName, jid: senderJid, phone: resolvedPhone };
     }
 
-    return { role: 'family_member', name: pushName || 'Keluarga', jid: senderJid };
+    // Specific known family mapping for Ayah's LID
+    if (senderJid && senderJid.includes('46944277819513')) {
+      return { role: 'father', name: config.fatherName, jid: senderJid, phone: config.fatherPhone };
+    }
+
+    return { role: 'family_member', name: pushName || 'Keluarga', jid: senderJid, phone: resolvedPhone };
   }
 
   extractMessageContent(msg) {
@@ -282,7 +310,7 @@ export class WhatsAppBot {
 
     // In group:
     const childName = (config.childName || 'cia').toLowerCase();
-    const cleanText = (text || '').toLowerCase();
+    const cleanText = (text || '').toLowerCase().trim();
 
     // 1. Check if bot is mentioned via WhatsApp mentions (@number)
     const contextInfo = msg.message?.extendedTextMessage?.contextInfo;
@@ -296,31 +324,41 @@ export class WhatsAppBot {
       return true;
     }
 
-    // 3. Check if child's name or pet names are mentioned in text (Cia, nak, adek, si kecil, dll)
-    const nameRegex = new RegExp(`\\b(${childName}|anakku|si kecil|dedek|adek|dek|nak)\\b`, 'i');
+    // 3. Ping check: if someone pings "p", "ppp", "P" in the group, child responds naturally!
+    if (/^p+$/i.test(cleanText)) {
+      return true;
+    }
+
+    // 4. Check if child's name or pet names are mentioned in text (Cia, nak, adek, si kecil, sayang, dll)
+    const nameRegex = new RegExp(`(^|\\s|[^a-zA-Z0-9])(${childName}+|anakku|si kecil|dedek|adek|dek|nak|sayang|sayangku|neng|cantik)($|\\s|[^a-zA-Z0-9])`, 'i');
     if (nameRegex.test(cleanText)) {
       return true;
     }
 
-    // 4. Natural questions or topics directed to child from Ayah or Ibu:
-    if (speakerInfo.role === 'father' || speakerInfo.role === 'mother') {
-      const childKeywords = [
-        'uang jajan', 'uang saku', 'celengan', 'tabungan', 'uangmu', 'sisa uang',
-        'sekolah', 'bu rina', 'pr ', 'tugas', 'gambar', 'krayon',
-        'lagi apa', 'sedang apa', 'udah makan', 'sudah makan', 'sudah mandi',
-        'udah tidur', 'selamat tidur', 'mimpi indah', 'bobok', 'bobo',
-        'kangen', 'hari ini gimana', 'gimana harimu', 'cerita dong',
-        'jajan apa', 'buat jajan', 'transfer', 'uangnya'
-      ];
+    // 5. Natural questions, greetings, or topics from family members:
+    const childKeywords = [
+      'uang jajan', 'uang saku', 'celengan', 'tabungan', 'uangmu', 'sisa uang',
+      'sekolah', 'bu rina', 'pr ', 'tugas', 'gambar', 'krayon',
+      'lagi apa', 'lagi ngapain', 'sedang apa', 'sedang ngapain',
+      'dimana', 'di mana', 'kemana', 'ke mana',
+      'udah makan', 'sudah makan', 'makan apa', 'sarapan', 'makan siang', 'makan malam',
+      'udah mandi', 'sudah mandi', 'mandi',
+      'udah tidur', 'sudah tidur', 'tidur', 'tdr', 'bobo', 'bobok', 'ngantuk', 'bangun',
+      'selamat tidur', 'selamat malam', 'selamat pagi', 'selamat siang', 'selamat sore',
+      'mimpi indah', 'kangen', 'rindu', 'peluk',
+      'hari ini gimana', 'gimana harimu', 'cerita dong', 'ada apa',
+      'jajan apa', 'buat jajan', 'transfer', 'uangnya',
+      'halo', 'hai', 'assalamualaikum', 'pagi', 'siang', 'sore', 'malam',
+      'apa kabar', 'gimana kabar', 'sehat', 'tes', 'cek', 'denger'
+    ];
 
-      if (childKeywords.some(kw => cleanText.includes(kw))) {
-        return true;
-      }
+    if (childKeywords.some(kw => cleanText.includes(kw))) {
+      return true;
+    }
 
-      // If Ayah or Ibu sends a photo or audio, child is curious and responds naturally!
-      if (msg.message?.imageMessage || msg.message?.audioMessage) {
-        return true;
-      }
+    // If Ayah or Ibu sends a photo or audio, child is curious and responds naturally!
+    if (msg.message?.imageMessage || msg.message?.audioMessage) {
+      return true;
     }
 
     return false;
