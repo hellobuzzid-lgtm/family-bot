@@ -169,13 +169,40 @@ export class WhatsAppBot {
       }
     }
 
-    // Natural flow: All messages, questions, and interactions are handled by natural conversation!
+    const cleanText = (text || '').trim();
+    const lowerText = cleanText.toLowerCase();
+
+    // 1. Wakeup detection
+    const wakeupRegex = /(^|\s)(bangun|pagi|subuh|sahur|udah pagi|bangun yuk|bangun nak|bangun sayang|bangun bangun)(\s|[!?.,]|$)/i;
+    const childName = (config.childName || 'cia').toLowerCase();
+    const nameRegex = new RegExp(`(^|\\s|[^a-zA-Z0-9])(${childName}+|anakku|si kecil|dedek|adek|dek|nak|sayang|sayangku|neng|cantik)($|\\s|[^a-zA-Z0-9])`, 'i');
+    const isNameCalled = nameRegex.test(lowerText);
+
+    if (wakeupRegex.test(lowerText) && (this.stateManager.isSleeping() || isNameCalled || lowerText.includes('pagi'))) {
+      if (this.stateManager.isSleeping()) {
+        console.log('[WhatsAppBot] 🌅 Deteksi ucapan membangunkan Cia, membangunkan Cia dari mode tidur!');
+        this.stateManager.wakeUp();
+      }
+    }
+
+    // 2. Privacy mode restore detection (orang tua memanggil Cia kembali)
+    const privacyEndRegex = /(^|\s)(cia sini|sini cia|cia udah|mana cia|keluar kamar|boleh keluar|selesai ngobrol|cia gabung|panggil cia)(\s|[!?.,]|$)/i;
+    if (privacyEndRegex.test(lowerText) && this.stateManager.isPrivacyModeActive()) {
+      console.log('[WhatsAppBot] 🚪 Orang tua memanggil Cia kembali, menonaktifkan privacy mode!');
+      this.stateManager.deactivatePrivacyMode();
+    }
 
     // Determine if bot should respond:
     const shouldRespond = this.checkShouldRespond(msg, text, isGroup, speakerInfo);
     if (!shouldRespond) {
       return;
     }
+
+    // Detect bedtime or privacy request for state transition AFTER sending reply
+    const bedtimeRegex = /(tidur ya|bobo ya|tidur yuk|bobo yuk|tidur gih|bobo gih|tidur sana|bobo sana|tidur dulu|bobo dulu|selamat tidur|selamat bobo|selamat malam|good night|met bobo|met tidur|mimpi indah|tidur nyenyak|udah malam.*tidur|udah malem.*tidur|cia tidur|cia bobo)/i;
+    const privacyRegex = /(ngobrol berdua|bicara berdua|ngomong berdua|chat berdua|berdua dulu|berdua aja|mau berdua|ke kamar dulu|main di kamar dulu|jangan ganggu dulu|ayah.*bunda.*mau (ngobrol|bicara|ngomong)|mau (ngobrol|bicara|ngomong) sama (bunda|ayah))/i;
+    const isBedtimeRequest = bedtimeRegex.test(lowerText);
+    const isPrivacyRequest = privacyRegex.test(lowerText);
 
     console.log(`[WhatsAppBot] Responding to ${speakerInfo.name} (${speakerInfo.role}) in ${isGroup ? 'Group' : 'Private'}: "${text || '[Media]'}"`);
 
@@ -223,6 +250,18 @@ export class WhatsAppBot {
     if (replyText) {
       await this.sendMessageWithTyping(chatJid, replyText, msg);
       this.stateManager.recordMessageSent();
+
+      // If this was a bedtime request, activate sleepLock now so bot goes completely quiet
+      if (isBedtimeRequest) {
+        console.log('[WhatsAppBot] 😴 Cia sudah pamitan tidur, mengaktifkan sleepLock...');
+        this.stateManager.setSleepLock(true);
+      }
+
+      // If this was a privacy request, activate privacyMode so parents can talk privately
+      if (isPrivacyRequest) {
+        console.log('[WhatsAppBot] 🤫 Ayah/Bunda ingin ngobrol berdua, mengaktifkan privacyMode (120 menit)...');
+        this.stateManager.activatePrivacyMode(120, 'Orang tua ingin ngobrol berdua');
+      }
 
       // Also record bot's reply into history
       this.chatHistoryManager.addMessage({
@@ -305,53 +344,93 @@ export class WhatsAppBot {
   }
 
   checkShouldRespond(msg, text, isGroup, speakerInfo) {
-    // 1. In private 1-on-1 chat: always respond
-    if (!isGroup) return true;
-
-    // 2. In dedicated Family Group: ALWAYS RESPOND!
-    // (User requirement: Cia membalas tidak hanya ketika namanya dipanggil saja)
-    const chatJid = msg.key.remoteJid;
-    if (this.targetGroupJid && chatJid === this.targetGroupJid) {
-      return true;
-    }
-
-    // 3. If message is from Father or Mother: always respond!
-    if (speakerInfo.role === 'father' || speakerInfo.role === 'mother') {
-      return true;
-    }
-
-    // 4. In any other group: respond if mentioned, quoted, or called
+    const cleanText = (text || '').trim();
+    const lowerText = cleanText.toLowerCase();
     const childName = (config.childName || 'cia').toLowerCase();
-    const cleanText = (text || '').toLowerCase().trim();
 
-    // Check if bot is mentioned via WhatsApp mentions (@number)
+    // Check context mentions / reply to bot
     const contextInfo = msg.message?.extendedTextMessage?.contextInfo;
     const mentionedJids = contextInfo?.mentionedJid || [];
-    if (this.botJid && mentionedJids.some(jid => jid.includes(this.botJid.split('@')[0]))) {
-      return true;
-    }
+    const isDirectlyMentioned = Boolean(
+      this.botJid && (
+        mentionedJids.some(jid => jid.includes(this.botJid.split('@')[0])) ||
+        (contextInfo?.participant && contextInfo.participant.includes(this.botJid.split('@')[0]))
+      )
+    );
 
-    // Check if replying/quoting the bot's message
-    if (contextInfo?.participant && this.botJid && contextInfo.participant.includes(this.botJid.split('@')[0])) {
-      return true;
-    }
-
-    // Ping check: if someone pings "p", "ppp", "P"
-    if (/^p+$/i.test(cleanText)) {
-      return true;
-    }
-
-    // Check if child's name or pet names are mentioned in text
+    // Check if child's name or pet names are mentioned
     const nameRegex = new RegExp(`(^|\\s|[^a-zA-Z0-9])(${childName}+|anakku|si kecil|dedek|adek|dek|nak|sayang|sayangku|neng|cantik)($|\\s|[^a-zA-Z0-9])`, 'i');
-    if (nameRegex.test(cleanText)) {
-      return true;
+    const isNameCalled = nameRegex.test(lowerText);
+
+    // Wakeup call check
+    const wakeupRegex = /(^|\s)(bangun|pagi|subuh|sahur|udah pagi|bangun yuk|bangun nak|bangun sayang|bangun bangun)(\s|[!?.,]|$)/i;
+    const isWakeup = wakeupRegex.test(lowerText);
+
+    // 1. ATURAN TIDUR: Jika Cia sedang tidur (21:00 - 06:00 atau sleepLock aktif)
+    // Permintaan user: "botnya harus bisa mengerti saat dia bilang tidur seharusnya dia tidak membalas"
+    if (this.stateManager.isSleeping()) {
+      // Cia HANYA bangun dan membalas jika secara spesifik dibangunkan oleh orang tua
+      if (isWakeup && (isNameCalled || isDirectlyMentioned || !isGroup || lowerText.includes('pagi'))) {
+        return true;
+      }
+      // Selama tidur, Cia 100% diam dan TIDAK MEMBALAS pesan obrolan apapun!
+      return false;
     }
 
-    // If sends photo or audio
+    // 2. ATURAN PRIVASI: Jika Orang Tua sedang mode ngobrol berdua (privacyMode aktif)
+    // Permintaan user: "apabila saya mengatakan ingin ngobrol berdua dengan bunda seharusnya bot memberi ruang tidak selalu membalas setiap saat ada obrolan di grup"
+    if (this.stateManager.isPrivacyModeActive()) {
+      const privacyEndRegex = /(^|\s)(cia sini|sini cia|cia udah|mana cia|keluar kamar|boleh keluar|selesai ngobrol|cia gabung|panggil cia)(\s|[!?.,]|$)/i;
+      if (privacyEndRegex.test(lowerText) || isDirectlyMentioned) {
+        return true;
+      }
+      // Selama orang tua ngobrol berdua, Cia diam memberi ruang
+      return false;
+    }
+
+    // 3. Private 1-on-1 Chat: Selalu respon
+    if (!isGroup) return true;
+
+    // 4. Tag / mention langsung WhatsApp (@bot) atau reply pesan bot: Selalu respon
+    if (isDirectlyMentioned) return true;
+
+    // 5. Nama Cia atau panggilan sayang anak disebut: Selalu respon
+    if (isNameCalled) return true;
+
+    // 6. Media foto atau pesan suara dikirim di grup: Respon antusias
     if (msg.message?.imageMessage || msg.message?.audioMessage) {
       return true;
     }
 
+    // 7. Ping check ("p", "ppp", "P"): Respon
+    if (/^p+$/i.test(lowerText)) {
+      return true;
+    }
+
+    // 8. Permintaan pamitan tidur atau permintaan ngobrol berdua: Respon 1 kali pamitan manis
+    const bedtimeRegex = /(tidur ya|bobo ya|tidur yuk|bobo yuk|tidur gih|bobo gih|tidur sana|bobo sana|tidur dulu|bobo dulu|selamat tidur|selamat bobo|selamat malam|good night|met bobo|met tidur|mimpi indah|tidur nyenyak|udah malam.*tidur|udah malem.*tidur|cia tidur|cia bobo)/i;
+    const privacyRegex = /(ngobrol berdua|bicara berdua|ngomong berdua|chat berdua|berdua dulu|berdua aja|mau berdua|ke kamar dulu|main di kamar dulu|jangan ganggu dulu|ayah.*bunda.*mau (ngobrol|bicara|ngomong)|mau (ngobrol|bicara|ngomong) sama (bunda|ayah))/i;
+    if (bedtimeRegex.test(lowerText) || privacyRegex.test(lowerText)) {
+      return true;
+    }
+
+    // 9. Pesan yang jelas ditujukan secara spesifik untuk pasangan (Ayah <-> Bunda)
+    // Contoh: "Bunda hari ini masak apa?", "Bun besok ada acara?", "Ayah mau makan apa?", "Yah pulang jam berapa?"
+    // Cia TIDAK BOLEH MENYELA obrolan pasangan!
+    const spouseAddressRegex = /^(bunda|bun|ayah|yah|istriku|suamiku|sayang)([,.!?\s]|$)/i;
+    if (spouseAddressRegex.test(cleanText) && !isNameCalled) {
+      return false;
+    }
+
+    // 10. Pertanyaan atau sapaan umum keluarga di grup (Cia boleh nimbrung ramah):
+    // Contoh: "halo semua", "assalamualaikum", "udah pada makan?", "lagi pada ngapain?", "siapa yang mau"
+    const generalFamilyRegex = /(assalamu|halo semua|halo guys|lagi pada ngapain|pada lagi apa|udah pada makan|pada dimana|kangen|kabar|hari ini gimana|siapa yang mau)/i;
+    if (generalFamilyRegex.test(lowerText)) {
+      return true;
+    }
+
+    // 11. Selain di atas (misal dialog antar Ayah & Bunda di grup yang tidak menyapa Cia):
+    // Cia memberi ruang dan TIDAK selalu membalas setiap pesan di grup!
     return false;
   }
 

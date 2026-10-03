@@ -148,9 +148,9 @@ export class GeminiService {
     const state = this.stateManager.getState();
     const currentActivity = this.stateManager.getCurrentActivity();
 
-    // Strict rule: Never speak if sleeping
-    if (currentActivity.isSleeping) {
-      return { shouldSend: false, reason: 'Child is currently sleeping (21:00 - 06:00)' };
+    // Strict rule: Never speak if sleeping or parents privacy mode is active
+    if (currentActivity.isSleeping || this.stateManager.isSleeping() || this.stateManager.isPrivacyModeActive()) {
+      return { shouldSend: false, reason: 'Child is sleeping or parents privacy mode is active' };
     }
 
     const systemPrompt = `

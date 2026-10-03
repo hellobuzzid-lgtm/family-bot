@@ -57,8 +57,8 @@ export class Scheduler {
     const state = this.stateManager.getState();
     const currentActivity = this.stateManager.getCurrentActivity();
 
-    // Rule 1: Never speak if sleeping (21:00 - 06:00)
-    if (currentActivity.isSleeping) {
+    // Rule 1: Never speak if sleeping (21:00 - 06:00 or locked) or parents privacy mode is active
+    if (currentActivity.isSleeping || this.stateManager.isSleeping() || this.stateManager.isPrivacyModeActive()) {
       return;
     }
 

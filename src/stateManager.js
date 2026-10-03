@@ -21,7 +21,14 @@ export class StateManager {
         throw new Error('state.json does not exist');
       }
       const raw = fs.readFileSync(stateFilePath, 'utf-8');
-      return JSON.parse(raw);
+      const loaded = JSON.parse(raw);
+      const defaults = this.getDefaultState();
+      return {
+        ...defaults,
+        ...loaded,
+        sleepLock: { ...defaults.sleepLock, ...(loaded.sleepLock || {}) },
+        privacyMode: { ...defaults.privacyMode, ...(loaded.privacyMode || {}) }
+      };
     } catch (err) {
       console.error('[StateManager] Error reading state.json, using defaults:', err.message);
       return this.getDefaultState();
@@ -68,7 +75,7 @@ export class StateManager {
     const dayOfWeek = now.day(); // 0 is Sunday, 6 is Saturday
     const isWeekend = dayOfWeek === 0 || dayOfWeek === 6;
 
-    if (timeValue >= 21.0 || timeValue < 6.0) {
+    if (this.state.sleepLock?.isLocked || timeValue >= 21.0 || timeValue < 6.0) {
       return {
         phase: 'tidur',
         name: 'Tidur Malam',
@@ -165,7 +172,68 @@ export class StateManager {
   }
 
   isSleeping() {
+    const now = this.getNow();
+    const hour = now.hour();
+    const minute = now.minute();
+    const timeValue = hour + minute / 60;
+
+    // Auto unlock if daytime arrives (06:00 - 20:59 WIB)
+    if (timeValue >= 6.0 && timeValue < 21.0 && this.state.sleepLock?.isLocked) {
+      this.setSleepLock(false);
+    }
+
+    if (this.state.sleepLock?.isLocked) {
+      return true;
+    }
+
     return this.getCurrentActivity().isSleeping;
+  }
+
+  setSleepLock(locked) {
+    if (!this.state.sleepLock) this.state.sleepLock = { isLocked: false, lockedAt: null };
+    this.state.sleepLock.isLocked = Boolean(locked);
+    this.state.sleepLock.lockedAt = locked ? new Date().toISOString() : null;
+    this.saveState();
+  }
+
+  wakeUp() {
+    if (!this.state.sleepLock) this.state.sleepLock = { isLocked: false, lockedAt: null };
+    this.state.sleepLock.isLocked = false;
+    this.state.sleepLock.lockedAt = null;
+    this.deactivatePrivacyMode();
+    this.saveState();
+  }
+
+  activatePrivacyMode(durationMinutes = 120, reason = 'Orang tua ngobrol berdua') {
+    const now = new Date();
+    const expiresAt = new Date(now.getTime() + durationMinutes * 60 * 1000);
+    this.state.privacyMode = {
+      isActive: true,
+      activatedAt: now.toISOString(),
+      expiresAt: expiresAt.toISOString(),
+      reason
+    };
+    this.saveState();
+  }
+
+  deactivatePrivacyMode() {
+    if (!this.state.privacyMode) this.state.privacyMode = { isActive: false, activatedAt: null, expiresAt: null, reason: '' };
+    this.state.privacyMode.isActive = false;
+    this.state.privacyMode.expiresAt = null;
+    this.saveState();
+  }
+
+  isPrivacyModeActive() {
+    if (!this.state.privacyMode?.isActive) return false;
+    if (this.state.privacyMode.expiresAt) {
+      const now = new Date();
+      const exp = new Date(this.state.privacyMode.expiresAt);
+      if (now > exp) {
+        this.deactivatePrivacyMode();
+        return false;
+      }
+    }
+    return true;
   }
 
   isSchool() {
@@ -361,6 +429,16 @@ export class StateManager {
         lastSpontaneousMessageAt: null,
         totalMessagesSent: 0,
         totalInteractions: 0
+      },
+      sleepLock: {
+        isLocked: false,
+        lockedAt: null
+      },
+      privacyMode: {
+        isActive: false,
+        activatedAt: null,
+        expiresAt: null,
+        reason: ''
       }
     };
   }
