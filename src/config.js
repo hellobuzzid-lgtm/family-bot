@@ -26,7 +26,8 @@ export function toJid(phone) {
 
 import fs from 'fs';
 
-const storageDir = process.env.STORAGE_DIR || rootDir;
+const defaultStorage = fs.existsSync('/app/storage') ? '/app/storage' : rootDir;
+const storageDir = process.env.STORAGE_DIR || defaultStorage;
 const dataDir = process.env.DATA_DIR || path.join(storageDir, 'data');
 const authDir = process.env.AUTH_DIR || path.join(storageDir, 'auth_info_baileys');
 
@@ -45,26 +46,26 @@ export const config = {
 
   // Gemini API
   geminiApiKey: process.env.GEMINI_API_KEY || '',
-  geminiModel: process.env.GEMINI_MODEL || 'gemini-3.8-flash',
+  geminiModel: process.env.GEMINI_MODEL || 'gemini-3.5-flash',
 
   // Family Identity
   childName: process.env.CHILD_NAME || 'Cia',
   fatherName: process.env.FATHER_NAME || 'Ayah',
-  motherName: process.env.MOTHER_NAME || 'Ibu',
+  motherName: process.env.MOTHER_NAME || 'Bunda',
 
   // Phone numbers
-  fatherPhone: normalizePhone(process.env.FATHER_PHONE),
-  motherPhone: normalizePhone(process.env.MOTHER_PHONE),
-  fatherJid: toJid(process.env.FATHER_PHONE),
-  motherJid: toJid(process.env.MOTHER_PHONE),
+  fatherPhone: normalizePhone(process.env.FATHER_PHONE || '62895360317212'),
+  motherPhone: normalizePhone(process.env.MOTHER_PHONE || '628975889967'),
+  fatherJid: toJid(process.env.FATHER_PHONE || '62895360317212'),
+  motherJid: toJid(process.env.MOTHER_PHONE || '628975889967'),
 
   // Bot Pairing Phone (untuk login kode pairing tanpa scan QR)
-  botPhone: normalizePhone(process.env.BOT_PHONE || process.env.PAIRING_NUMBER),
+  botPhone: normalizePhone(process.env.BOT_PHONE || process.env.PAIRING_NUMBER || '6285183541035'),
   usePairingCode: process.env.USE_PAIRING_CODE === 'true' || !!(process.env.BOT_PHONE || process.env.PAIRING_NUMBER),
 
-  // WhatsApp Group Target
-  targetGroupName: process.env.TARGET_GROUP_NAME || '',
-  targetGroupJid: process.env.TARGET_GROUP_JID || '',
+  // WhatsApp Group Target (NEX FAMILY)
+  targetGroupName: process.env.TARGET_GROUP_NAME || 'NEX FAMILY',
+  targetGroupJid: process.env.TARGET_GROUP_JID || '120363429574214127@g.us',
 
   // Spontaneous message behavior
   autonomousEnabled: process.env.AUTONOMOUS_ENABLED !== 'false',
