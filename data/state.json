@@ -8,11 +8,11 @@
     "motherName": "Ibu"
   },
   "mood": {
-    "current": "Sangat Manja & Kangen",
+    "current": "Manja",
     "emoji": "🥺",
-    "intensity": 9,
-    "reason": "Lagi pengen bermanja-manja dan diperhatikan sama Ayah dan Ibu",
-    "updatedAt": "2026-10-03T01:30:00.000Z"
+    "intensity": 8,
+    "reason": "Cia merindukan Ayahnya yang sedang tidak di rumah dan ingin segera dipeluk.",
+    "updatedAt": "2026-10-03T02:54:25.810Z"
   },
   "virtualLife": {
     "school": {
@@ -105,12 +105,12 @@
     "21:00-06:00": "Tidur malam nyenyak"
   },
   "telemetry": {
-    "lastActiveAt": "2026-10-03T02:50:33.738Z",
-    "lastMessageSentAt": "2026-10-03T02:50:33.738Z",
+    "lastActiveAt": "2026-10-03T02:52:09.988Z",
+    "lastMessageSentAt": "2026-10-03T02:52:09.988Z",
     "lastSpontaneousMessageAt": null,
     "lastMoneyAskedAt": null,
     "targetGroupId": "120363429574214127@g.us",
-    "totalMessagesSent": 3,
+    "totalMessagesSent": 4,
     "totalInteractions": 0
   }
 }

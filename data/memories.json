@@ -7,6 +7,13 @@
     "createdAt": "2026-10-01T00:00:00.000Z"
   },
   {
+    "id": "mem_4",
+    "category": "child",
+    "fact": "Anak sangat suka es krim rasa stroberi dan cokelat, suka menggambar hewan dan pelangi, tapi takut suara petir keras",
+    "importance": 9,
+    "createdAt": "2026-10-01T00:00:00.000Z"
+  },
+  {
     "id": "mem_2",
     "category": "father",
     "fact": "Ayah suka kopi dan suka kerja sampai malam, anak selalu ingatkan Ayah jangan lupa istirahat",
@@ -21,10 +28,10 @@
     "createdAt": "2026-10-01T00:00:00.000Z"
   },
   {
-    "id": "mem_4",
+    "id": "mem_1790996065810_322",
     "category": "child",
-    "fact": "Anak sangat suka es krim rasa stroberi dan cokelat, suka menggambar hewan dan pelangi, tapi takut suara petir keras",
-    "importance": 9,
-    "createdAt": "2026-10-01T00:00:00.000Z"
+    "fact": "Cia suka menonton kartun lucu di sofa sambil makan biskuit susu, dan saat ini sedang sangat merindukan Ayah serta ingin dipeluk.",
+    "importance": 7,
+    "createdAt": "2026-10-03T02:54:25.810Z"
   }
 ]

@@ -68,71 +68,63 @@ export class GeminiService {
       }
 
       // Wrap call with strict timeout so bot never hangs
-      const timeoutMs = 12000;
+      const timeoutMs = 25000;
       const callWithTimeout = (promise) => Promise.race([
         promise,
-        new Promise((_, reject) => setTimeout(() => reject(new Error('TIMEOUT_12S')), timeoutMs))
+        new Promise((_, reject) => setTimeout(() => reject(new Error('TIMEOUT_25S')), timeoutMs))
       ]);
 
-      // Try Interactions API first
-      try {
-        const interaction = await callWithTimeout(
-          this.ai.interactions.create({
-            model,
-            system_instruction: systemPrompt,
-            input: inputParts
-          })
-        );
+      const candidateModels = [...new Set([
+        config.geminiModel,
+        'gemini-3.5-flash',
+        'gemini-3.5-flash-lite',
+        'gemini-3.1-flash-lite',
+        'gemini-flash-lite-latest'
+      ].filter(Boolean))];
 
-        const reply = interaction.output_text?.trim();
-        if (reply) {
-          this.analyzeMessageAftermath(messageText, reply, speakerInfo).catch(err => {
-            console.error('[GeminiService] Error in aftermath analysis:', err.message);
-          });
-          return reply;
-        }
-      } catch (interactionErr) {
-        console.warn('[GeminiService] interactions.create error or timeout:', interactionErr.message);
-
-        // Fallback to models.generateContent
-        const contents = [];
-        if (media && media.buffer && media.mimeType) {
-          contents.push({
-            role: 'user',
-            parts: [
-              { text: fullPrompt },
-              {
-                inlineData: {
-                  mimeType: media.mimeType,
-                  data: media.buffer.toString('base64')
+      for (const candidate of candidateModels) {
+        try {
+          const contents = [];
+          if (media && media.buffer && media.mimeType) {
+            contents.push({
+              role: 'user',
+              parts: [
+                { text: fullPrompt },
+                {
+                  inlineData: {
+                    mimeType: media.mimeType,
+                    data: media.buffer.toString('base64')
+                  }
                 }
+              ]
+            });
+          } else {
+            contents.push({
+              role: 'user',
+              parts: [{ text: fullPrompt }]
+            });
+          }
+
+          const response = await callWithTimeout(
+            this.ai.models.generateContent({
+              model: candidate,
+              contents,
+              config: {
+                systemInstruction: systemPrompt,
+                temperature: 0.85
               }
-            ]
-          });
-        } else {
-          contents.push({
-            role: 'user',
-            parts: [{ text: fullPrompt }]
-          });
-        }
+            })
+          );
 
-        const response = await callWithTimeout(
-          this.ai.models.generateContent({
-            model,
-            contents,
-            config: {
-              systemInstruction: systemPrompt,
-              temperature: 0.85
-            }
-          })
-        );
-
-        const fallbackReply = response.text?.trim();
-        if (fallbackReply) {
-          this.analyzeMessageAftermath(messageText, fallbackReply, speakerInfo).catch(err => {
-            console.error('[GeminiService] Error in aftermath analysis:', err.message);
-          });
-          return fallbackReply;
+          const reply = response.text?.trim();
+          if (reply) {
+            this.analyzeMessageAftermath(messageText, reply, speakerInfo).catch(err => {
+              console.error('[GeminiService] Error in aftermath analysis:', err.message);
+            });
+            return reply;
+          }
+        } catch (candidateErr) {
+          console.warn(`[GeminiService] Model ${candidate} error: ${candidateErr.message}`);
         }
       }
 
@@ -194,22 +186,32 @@ ${recentHistoryText}
 Tentukan apakah anak harus mengirim pesan spontan sekarang?
 `;
 
-    try {
-      const response = await this.ai.models.generateContent({
-        model: config.geminiModel || 'gemini-3.8-flash',
-        contents: inputPrompt,
-        config: {
-          systemInstruction: systemPrompt,
-          responseMimeType: 'application/json'
-        }
-      });
+    const candidateModels = [...new Set([
+      config.geminiModel,
+      'gemini-3.5-flash',
+      'gemini-3.5-flash-lite',
+      'gemini-3.1-flash-lite'
+    ].filter(Boolean))];
 
-      const parsed = JSON.parse(response.text.trim());
-      return parsed;
-    } catch (err) {
-      console.warn('[GeminiService] evaluateSpontaneous evaluation skipped/failed:', err.message);
-      return { shouldSend: false, reason: err.message };
+    for (const candidate of candidateModels) {
+      try {
+        const response = await this.ai.models.generateContent({
+          model: candidate,
+          contents: inputPrompt,
+          config: {
+            systemInstruction: systemPrompt,
+            responseMimeType: 'application/json'
+          }
+        });
+
+        const parsed = JSON.parse(response.text.trim());
+        return parsed;
+      } catch (err) {
+        // Continue to next candidate
+      }
     }
+
+    return { shouldSend: false, reason: 'Evaluation unavailable across candidate models' };
   }
 
   /**
