@@ -305,58 +305,49 @@ export class WhatsAppBot {
   }
 
   checkShouldRespond(msg, text, isGroup, speakerInfo) {
-    // In private 1-on-1 chat with Ayah or Ibu: always respond
+    // 1. In private 1-on-1 chat: always respond
     if (!isGroup) return true;
 
-    // In group:
+    // 2. In dedicated Family Group: ALWAYS RESPOND!
+    // (User requirement: Cia membalas tidak hanya ketika namanya dipanggil saja)
+    const chatJid = msg.key.remoteJid;
+    if (this.targetGroupJid && chatJid === this.targetGroupJid) {
+      return true;
+    }
+
+    // 3. If message is from Father or Mother: always respond!
+    if (speakerInfo.role === 'father' || speakerInfo.role === 'mother') {
+      return true;
+    }
+
+    // 4. In any other group: respond if mentioned, quoted, or called
     const childName = (config.childName || 'cia').toLowerCase();
     const cleanText = (text || '').toLowerCase().trim();
 
-    // 1. Check if bot is mentioned via WhatsApp mentions (@number)
+    // Check if bot is mentioned via WhatsApp mentions (@number)
     const contextInfo = msg.message?.extendedTextMessage?.contextInfo;
     const mentionedJids = contextInfo?.mentionedJid || [];
     if (this.botJid && mentionedJids.some(jid => jid.includes(this.botJid.split('@')[0]))) {
       return true;
     }
 
-    // 2. Check if replying/quoting the bot's message
+    // Check if replying/quoting the bot's message
     if (contextInfo?.participant && this.botJid && contextInfo.participant.includes(this.botJid.split('@')[0])) {
       return true;
     }
 
-    // 3. Ping check: if someone pings "p", "ppp", "P" in the group, child responds naturally!
+    // Ping check: if someone pings "p", "ppp", "P"
     if (/^p+$/i.test(cleanText)) {
       return true;
     }
 
-    // 4. Check if child's name or pet names are mentioned in text (Cia, nak, adek, si kecil, sayang, dll)
+    // Check if child's name or pet names are mentioned in text
     const nameRegex = new RegExp(`(^|\\s|[^a-zA-Z0-9])(${childName}+|anakku|si kecil|dedek|adek|dek|nak|sayang|sayangku|neng|cantik)($|\\s|[^a-zA-Z0-9])`, 'i');
     if (nameRegex.test(cleanText)) {
       return true;
     }
 
-    // 5. Natural questions, greetings, or topics from family members:
-    const childKeywords = [
-      'uang jajan', 'uang saku', 'celengan', 'tabungan', 'uangmu', 'sisa uang',
-      'sekolah', 'bu rina', 'pr ', 'tugas', 'gambar', 'krayon',
-      'lagi apa', 'lagi ngapain', 'sedang apa', 'sedang ngapain',
-      'dimana', 'di mana', 'kemana', 'ke mana',
-      'udah makan', 'sudah makan', 'makan apa', 'sarapan', 'makan siang', 'makan malam',
-      'udah mandi', 'sudah mandi', 'mandi',
-      'udah tidur', 'sudah tidur', 'tidur', 'tdr', 'bobo', 'bobok', 'ngantuk', 'bangun',
-      'selamat tidur', 'selamat malam', 'selamat pagi', 'selamat siang', 'selamat sore',
-      'mimpi indah', 'kangen', 'rindu', 'peluk',
-      'hari ini gimana', 'gimana harimu', 'cerita dong', 'ada apa',
-      'jajan apa', 'buat jajan', 'transfer', 'uangnya',
-      'halo', 'hai', 'assalamualaikum', 'pagi', 'siang', 'sore', 'malam',
-      'apa kabar', 'gimana kabar', 'sehat', 'tes', 'cek', 'denger'
-    ];
-
-    if (childKeywords.some(kw => cleanText.includes(kw))) {
-      return true;
-    }
-
-    // If Ayah or Ibu sends a photo or audio, child is curious and responds naturally!
+    // If sends photo or audio
     if (msg.message?.imageMessage || msg.message?.audioMessage) {
       return true;
     }
