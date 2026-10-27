@@ -270,23 +270,33 @@ export class WhatsAppBot {
 
     // 2. Check if quoted / replied to bot
     if (this.isMessageQuotingBot(msg)) {
+      console.log('[WhatsAppBot] 🎯 Triggered by QUOTE / REPLY to bot');
       return true;
     }
 
     // 3. Check WhatsApp @mentions
     const contextInfo = this.extractContextInfo(msg);
     const mentionedJids = contextInfo?.mentionedJid || [];
-    const botNum = config.botPhone || (this.botJid ? this.botJid.replace(/\D/g, '') : '');
+    const botNum = normalizePhone(config.botPhone) || (this.botJid ? normalizePhone(this.botJid) : '');
+    const botCleanJid = this.botJid ? this.botJid.split(':')[0].split('@')[0] : '';
+    const botCleanLid = this.botLid ? this.botLid.split(':')[0].split('@')[0] : '';
+
     const isDirectlyMentioned = Boolean(
-      (this.botJid && mentionedJids.some(jid => jid.includes(this.botJid.split('@')[0]))) ||
-      (this.botLid && mentionedJids.some(jid => jid.includes(this.botLid))) ||
-      (botNum && mentionedJids.some(jid => jid.includes(botNum)))
+      (botCleanJid && mentionedJids.some(jid => jid.split(':')[0].split('@')[0] === botCleanJid)) ||
+      (botCleanLid && mentionedJids.some(jid => jid.split(':')[0].split('@')[0] === botCleanLid)) ||
+      (botNum && mentionedJids.some(jid => normalizePhone(jid).includes(botNum) || botNum.includes(normalizePhone(jid)))) ||
+      (botNum && (lowerText.includes(`@${botNum}`) || lowerText.includes(`@${botNum.replace(/^62/, '0')}`)))
     );
-    if (isDirectlyMentioned) return true;
+    if (isDirectlyMentioned) {
+      console.log('[WhatsAppBot] 🎯 Triggered by @TAG / MENTION to bot');
+      return true;
+    }
 
     // 4. Check if called by name or bot keywords
-    const callKeywords = /(^|\s|[^a-zA-Z0-9])(bot|partner|ai|partner ai|life partner|bro ai|asisten)($|\s|[^a-zA-Z0-9])/i;
-    if (callKeywords.test(lowerText)) {
+    const customBotName = (config.botName || '').trim().toLowerCase();
+    const callKeywords = /(^|\s|[^a-zA-Z0-9])(bot|cia|partner|ai|partner ai|life partner|bro ai|asisten)($|\s|[^a-zA-Z0-9])/i;
+    if (callKeywords.test(lowerText) || (customBotName && lowerText.includes(customBotName))) {
+      console.log(`[WhatsAppBot] 🎯 Triggered by NAME / KEYWORD in message: "${cleanText}"`);
       return true;
     }
 
@@ -294,6 +304,7 @@ export class WhatsAppBot {
     // (e.g. tanya jadwal salat, minta evaluasi, tanya keuangan bersama, minta saran)
     const utilityKeywords = /(jadwal salat|waktu salat|evaluasi|catat|pengeluaran|pemasukan|keuangan|saran|pendapat kamu|menurut kamu|target kita)/i;
     if (utilityKeywords.test(lowerText)) {
+      console.log(`[WhatsAppBot] 🎯 Triggered by UTILITY KEYWORD: "${cleanText}"`);
       return true;
     }
 
@@ -305,23 +316,52 @@ export class WhatsAppBot {
     const contextInfo = this.extractContextInfo(msg);
     if (!contextInfo) return false;
 
+    // A. Quoting a message sent by the bot in current session
     if (contextInfo.stanzaId && this.botSentMessageIds.has(contextInfo.stanzaId)) {
       return true;
     }
 
-    const participant = (contextInfo.participant || '').toLowerCase();
-    const botPhone = config.botPhone || (this.botJid ? this.botJid.replace(/\D/g, '') : '');
-    if (participant) {
-      if (botPhone && participant.includes(botPhone)) return true;
-      if (this.botLid && participant.includes(this.botLid.toLowerCase())) return true;
-      if (this.botJid && participant.includes(this.botJid.split('@')[0].toLowerCase())) return true;
-    }
+    // B. Quoting bot's participant JID, LID, or Phone number
+    const participant = (contextInfo.participant || '').toLowerCase().trim();
+    if (!participant) return false;
+
+    const botNum = normalizePhone(config.botPhone) || (this.botJid ? normalizePhone(this.botJid) : '');
+    const botCleanJid = this.botJid ? this.botJid.split(':')[0].split('@')[0] : '';
+    const botCleanLid = this.botLid ? this.botLid.split(':')[0].split('@')[0] : '';
+
+    const participantClean = participant.split(':')[0].split('@')[0];
+    const participantPhone = normalizePhone(participant);
+
+    if (botCleanJid && (participantClean === botCleanJid || participant.includes(botCleanJid))) return true;
+    if (botCleanLid && (participantClean === botCleanLid || participant.includes(botCleanLid))) return true;
+    if (botNum && participantPhone && (participantPhone === botNum || participantPhone.includes(botNum) || botNum.includes(participantPhone))) return true;
 
     return false;
   }
 
+  getInnerMessage(msg) {
+    let m = msg?.message;
+    if (!m) return null;
+    while (
+      m.ephemeralMessage ||
+      m.viewOnceMessage ||
+      m.viewOnceMessageV2 ||
+      m.viewOnceMessageV2Extension ||
+      m.documentWithCaptionMessage
+    ) {
+      m = (
+        m.ephemeralMessage ||
+        m.viewOnceMessage ||
+        m.viewOnceMessageV2 ||
+        m.viewOnceMessageV2Extension ||
+        m.documentWithCaptionMessage
+      ).message;
+    }
+    return m;
+  }
+
   extractContextInfo(msg) {
-    const m = msg.message;
+    const m = this.getInnerMessage(msg);
     if (!m) return null;
     return m.extendedTextMessage?.contextInfo ||
            m.imageMessage?.contextInfo ||
@@ -331,12 +371,13 @@ export class WhatsAppBot {
   }
 
   extractMessageText(msg) {
-    const m = msg.message;
+    const m = this.getInnerMessage(msg);
     if (!m) return '';
     if (m.conversation) return m.conversation;
     if (m.extendedTextMessage?.text) return m.extendedTextMessage.text;
     if (m.imageMessage?.caption) return m.imageMessage.caption;
     if (m.videoMessage?.caption) return m.videoMessage.caption;
+    if (m.documentMessage?.caption) return m.documentMessage.caption;
     return '';
   }
 

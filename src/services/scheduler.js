@@ -117,11 +117,13 @@ export class Scheduler {
   }
 
   async sendReminder(message) {
-    if (!this.whatsappBot) return;
+    if (!this.whatsappBot?.sock) return;
     try {
-      // Send to owner private chat if available, else send to target group
-      const target = config.ownerJid || config.targetGroupJid;
-      if (target) {
+      const targets = new Set();
+      if (config.targetGroupJid) targets.add(config.targetGroupJid);
+      if (config.ownerJid) targets.add(config.ownerJid);
+
+      for (const target of targets) {
         await this.whatsappBot.sendMessageWithTyping(target, message);
       }
     } catch (err) {
