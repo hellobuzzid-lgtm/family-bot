@@ -1,8 +1,8 @@
 {
-  "name": "nex-family-virtual-child-bot",
-  "version": "1.0.0",
-  "description": "WhatsApp Virtual Child AI Bot for NEX Family with realistic state simulation, memories, mood, schedule, and pocket money tracking",
-  "main": "dist/index.js",
+  "name": "ai-personal-life-partner",
+  "version": "2.0.0",
+  "description": "AI Personal Life Partner: Personal Assistant, Financial Advisor, Life Coach, Business Consultant, Relationship Mediator, Long-Term Memory & Continuous Learning AI",
+  "main": "src/index.js",
   "type": "module",
   "scripts": {
     "start": "node src/index.js",
@@ -13,11 +13,12 @@
     "bot",
     "ai",
     "gemini",
-    "virtual-child",
-    "roleplay",
+    "life-partner",
+    "personal-assistant",
+    "financial-advisor",
     "baileys"
   ],
-  "author": "NEX Family",
+  "author": "NEX Life Partner",
   "license": "MIT",
   "dependencies": {
     "@google/genai": "^2.26.0",

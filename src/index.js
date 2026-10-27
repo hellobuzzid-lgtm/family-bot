@@ -1,91 +1,83 @@
 import { config } from './config.js';
-import { StateManager } from './stateManager.js';
-import { MemoryManager } from './memoryManager.js';
-import { EventEngine } from './eventEngine.js';
-import { ChatHistoryManager } from './chatHistoryManager.js';
-import { PromptBuilder } from './promptBuilder.js';
-import { GeminiService } from './geminiService.js';
-import { CommandHandler } from './commandHandler.js';
-import { WhatsAppBot } from './whatsappBot.js';
-import { Scheduler } from './scheduler.js';
+import { MemoryManager } from './services/memoryManager.js';
+import { FinanceManager } from './services/financeManager.js';
+import { GoalTracker } from './services/goalTracker.js';
+import { RoutineManager } from './services/routineManager.js';
+import { MasterPromptBuilder } from './core/masterPrompt.js';
+import { GeminiService } from './services/geminiService.js';
+import { WhatsAppBot } from './bot/whatsappBot.js';
+import { Scheduler } from './services/scheduler.js';
 
-console.log(`
-==========================================================
-🧒 NEX FAMILY — VIRTUAL CHILD AI BOT
-==========================================================
-Identitas Anak : ${config.childName} (6 Tahun)
-Ayah           : ${config.fatherName}
-Ibu            : ${config.motherName}
-Zona Waktu     : ${config.timezone}
-Model AI       : ${config.geminiModel}
-Mode Otonom    : ${config.autonomousEnabled ? 'Aktif (Pesan Spontan Terjadwal)' : 'Non-Aktif'}
-==========================================================
-`);
+console.log('================================================================');
+console.log('🌟 AI PERSONAL LIFE PARTNER v2.0 🌟');
+console.log('Personal Assistant, Financial Advisor, Life Coach, Business Consultant,');
+console.log('Relationship Mediator, Long-Term Memory & Continuous Learning AI');
+console.log('================================================================');
+console.log(`👤 Owner (${config.ownerName}): ${config.ownerPhone || 'Not set'}`);
+console.log(`💍 Partner (${config.partnerName}): ${config.partnerPhone || 'Not set'}`);
+console.log(`📱 Bot Number: ${config.botPhone || 'Not set'}`);
+console.log(`🤖 Gemini Model: ${config.geminiModel}`);
+console.log(`🕒 Timezone: ${config.timezone} | City: ${config.cityName}`);
+console.log(`📂 Storage Path: ${config.storageDir}`);
+console.log('================================================================\n');
 
-// 1. Initialize State and Storage Managers
-const stateManager = new StateManager();
-const memoryManager = new MemoryManager();
-const eventEngine = new EventEngine(stateManager);
-const chatHistoryManager = new ChatHistoryManager();
-
-// 2. Initialize Prompt and AI Services
-const promptBuilder = new PromptBuilder(stateManager, memoryManager, eventEngine);
-const geminiService = new GeminiService(stateManager, memoryManager, eventEngine, promptBuilder);
-
-// 3. Initialize Command Handler
-const commandHandler = new CommandHandler(stateManager, memoryManager, eventEngine);
-
-// 4. Initialize WhatsApp Bot Engine
-const whatsappBot = new WhatsAppBot(
-  stateManager,
-  memoryManager,
-  eventEngine,
-  geminiService,
-  chatHistoryManager,
-  commandHandler
-);
-
-// 5. Initialize Autonomous Scheduler
-const scheduler = new Scheduler(
-  stateManager,
-  eventEngine,
-  geminiService,
-  chatHistoryManager,
-  whatsappBot
-);
-
-// Start systems
-async function bootstrap() {
+async function main() {
   try {
-    // Print current state summary
-    const state = stateManager.getState();
-    const activity = stateManager.getCurrentActivity();
-    console.log(`[Init] Waktu Sekarang : ${stateManager.getCurrentTimeString()}`);
-    console.log(`[Init] Status Harian   : ${activity.name} (${activity.phase})`);
-    console.log(`[Init] Mood Virtual    : ${state.mood.current} ${state.mood.emoji}`);
-    console.log(`[Init] Saldo Dompet    : ${stateManager.formatRupiah(state.finances.pocketMoneyBalance)}`);
-    console.log(`[Init] Celengan Ayam   : ${stateManager.formatRupiah(state.finances.savingsBalance)} / Target: ${stateManager.formatRupiah(state.finances.savingsTarget)}`);
+    // 1. Initialize core state & database managers
+    const memoryManager = new MemoryManager();
+    const financeManager = new FinanceManager();
+    const goalTracker = new GoalTracker();
+    const routineManager = new RoutineManager();
 
-    // Start WhatsApp Bot
+    // 2. Initialize prompt builder
+    const promptBuilder = new MasterPromptBuilder(
+      memoryManager,
+      financeManager,
+      goalTracker,
+      routineManager
+    );
+
+    // 3. Initialize AI reasoning service
+    const geminiService = new GeminiService(
+      promptBuilder,
+      memoryManager,
+      financeManager,
+      goalTracker,
+      routineManager
+    );
+
+    // 4. Initialize WhatsApp Bot Engine
+    const whatsappBot = new WhatsAppBot(geminiService);
+
+    // 5. Initialize Automated Life Scheduler
+    const scheduler = new Scheduler(
+      whatsappBot,
+      routineManager,
+      financeManager,
+      goalTracker
+    );
+
+    // 6. Start WhatsApp Bot
     await whatsappBot.start();
 
-    // Start Scheduler
+    // 7. Start Scheduler
     scheduler.start();
 
-  } catch (error) {
-    console.error('❌ [Fatal] Error during startup:', error);
+    console.log('🚀 [System] AI Personal Life Partner initialized and running!');
+
+    // Handle graceful shutdown
+    const handleShutdown = (signal) => {
+      console.log(`\n[System] Received ${signal}. Shutting down gracefully...`);
+      scheduler.stop();
+      process.exit(0);
+    };
+
+    process.on('SIGINT', () => handleShutdown('SIGINT'));
+    process.on('SIGTERM', () => handleShutdown('SIGTERM'));
+  } catch (err) {
+    console.error('❌ [System] Fatal initialization error:', err);
     process.exit(1);
   }
 }
 
-bootstrap();
-
-// Handle graceful shutdown
-process.on('SIGINT', () => {
-  console.log('\n[Shutdown] Menutup bot WhatsApp dengan aman...');
-  scheduler.stop();
-  stateManager.saveState();
-  memoryManager.saveMemories();
-  eventEngine.saveEvents();
-  process.exit(0);
-});
+main();
