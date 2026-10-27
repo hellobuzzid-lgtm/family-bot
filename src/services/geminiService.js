@@ -49,20 +49,21 @@ export class GeminiService {
     const currentMsgPrompt = `Pesan baru dari ${speakerInfo.name} (${speakerInfo.role}): "${messageText || ''}"`;
     const fullUserPrompt = `${historyContext}\n${currentMsgPrompt}\n\nJawablah sebagai AI Personal Life Partner. Bersikaplah dewasa, logis, jujur, santai, dan bersahabat:`;
 
-    const candidateModels = [...new Set([
-      config.geminiModel,
-      'gemini-2.5-flash',
-      'gemini-2.0-flash',
-      'gemini-2.5-flash-lite',
-      'gemini-1.5-flash',
-      'gemini-3.5-flash'
-    ].filter(Boolean))];
+    const candidateModels = [
+      'gemini-3.5-flash-lite',
+      'gemini-flash-lite-latest',
+      'gemini-3.1-flash-lite',
+      'gemini-3.7-flash',
+      'gemini-3.8-flash'
+    ];
 
     const timeoutMs = 28000;
     const callWithTimeout = (promise) => Promise.race([
       promise,
       new Promise((_, reject) => setTimeout(() => reject(new Error('TIMEOUT_28S')), timeoutMs))
     ]);
+
+    let lastError = null;
 
     for (const model of candidateModels) {
       try {
@@ -106,11 +107,13 @@ export class GeminiService {
           return cleanedText;
         }
       } catch (err) {
+        lastError = err;
         console.warn(`[GeminiService] Model ${model} failed: ${err.message}`);
       }
     }
 
-    return 'Bro, koneksi analitik gue lagi agak terhambat barusan. Coba kirim ulang pesan lo ya.';
+    console.error('[GeminiService] All candidate models failed! Last error:', lastError?.message);
+    return 'Bro, koneksi analitik NEX lagi agak terhambat barusan. Coba kirim ulang pesan lo ya.';
   }
 
   processEmbeddedActions(text, speakerInfo) {

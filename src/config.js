@@ -70,10 +70,10 @@ export const config = {
 
   // Gemini AI
   geminiApiKey: process.env.GEMINI_API_KEY || '',
-  geminiModel: process.env.GEMINI_MODEL || 'gemini-3.5-flash',
+  geminiModel: process.env.GEMINI_MODEL || 'gemini-3.5-flash-lite',
 
   // Bot Profile
-  botName: process.env.BOT_NAME || 'Life Partner',
+  botName: process.env.BOT_NAME || 'NEX',
   botPhone: botPhoneRaw,
   usePairingCode: process.env.USE_PAIRING_CODE !== 'false',
 

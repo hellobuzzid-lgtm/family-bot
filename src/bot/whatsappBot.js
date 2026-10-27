@@ -292,9 +292,9 @@ export class WhatsAppBot {
       return true;
     }
 
-    // 4. Check if called by name or bot keywords
-    const customBotName = (config.botName || '').trim().toLowerCase();
-    const callKeywords = /(^|\s|[^a-zA-Z0-9])(bot|cia|partner|ai|partner ai|life partner|bro ai|asisten)($|\s|[^a-zA-Z0-9])/i;
+    // 4. Check if called by name or bot keywords (NEX)
+    const customBotName = (config.botName || 'nex').trim().toLowerCase();
+    const callKeywords = /(^|\s|[^a-zA-Z0-9])(nex|bot|partner|ai|partner ai|life partner|bro ai|asisten)($|\s|[^a-zA-Z0-9])/i;
     if (callKeywords.test(lowerText) || (customBotName && lowerText.includes(customBotName))) {
       console.log(`[WhatsAppBot] 🎯 Triggered by NAME / KEYWORD in message: "${cleanText}"`);
       return true;
