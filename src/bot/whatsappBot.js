@@ -32,6 +32,27 @@ export class WhatsAppBot {
   }
 
   async start() {
+    // If requested via env, reset auth directory cleanly
+    if (process.env.RESET_AUTH === 'true') {
+      console.log('[WhatsAppBot] RESET_AUTH=true detected. Clearing authDir before start...');
+      try {
+        if (fs.existsSync(config.authDir)) {
+          fs.rmSync(config.authDir, { recursive: true, force: true });
+          fs.mkdirSync(config.authDir, { recursive: true });
+        }
+      } catch (e) {
+        console.error('[WhatsAppBot] Error clearing authDir on reset:', e.message);
+      }
+    }
+
+    if (this.sock?.ev) {
+      try {
+        this.sock.ev.removeAllListeners('connection.update');
+        this.sock.ev.removeAllListeners('creds.update');
+        this.sock.ev.removeAllListeners('messages.upsert');
+      } catch (_) {}
+    }
+
     const logger = pino({ level: 'silent' });
     const { state, saveCreds } = await useMultiFileAuthState(config.authDir);
     const { version, isLatest } = await fetchLatestBaileysVersion().catch(() => ({ version: [2, 3000, 1015901307], isLatest: true }));
@@ -59,23 +80,33 @@ export class WhatsAppBot {
       if (!config.botPhone) {
         console.warn('⚠️ [WhatsAppBot] BOT_PHONE belum diatur di .env / Variables!');
       } else {
-        setTimeout(async () => {
+        let attempts = 0;
+        const requestPairing = async () => {
+          if (this.sock?.authState?.creds?.registered) return;
           try {
-            console.log(`[WhatsAppBot] Meminta kode pairing WhatsApp untuk nomor: ${config.botPhone}...`);
+            attempts++;
+            console.log(`[WhatsAppBot] 📡 Meminta kode pairing WhatsApp untuk nomor ${config.botPhone} (Percobaan #${attempts})...`);
             const code = await this.sock.requestPairingCode(config.botPhone);
             console.log('\n======================================================');
             console.log(`🔑 KODE PAIRING WHATSAPP ANDA: 👉 ${code} 👈`);
             console.log('======================================================');
-            console.log('Langkah Menautkan di HP:');
-            console.log('1. Buka aplikasi WhatsApp di HP nomor bot');
-            console.log('2. Buka Setelan > Perangkat Tertaut > Tautkan Perangkat');
-            console.log('3. Klik: "Tautkan dengan nomor telepon saja"');
-            console.log(`4. Masukkan kode 8 karakter: ${code}`);
+            console.log(`📱 Nomor Bot: ${config.botPhone}`);
+            console.log('Langkah Menautkan di WhatsApp HP Bot:');
+            console.log(`1. Buka aplikasi WhatsApp di HP nomor bot (${config.botPhone})`);
+            console.log('2. Buka Setelan (titik tiga) > Perangkat Tertaut > Tautkan Perangkat');
+            console.log('3. Klik tautan teks kecil di bagian bawah: "Tautkan dengan nomor telepon saja"');
+            console.log(`4. Masukkan kode 8 karakter di atas: ${code}`);
             console.log('======================================================\n');
           } catch (err) {
-            console.error('❌ [WhatsAppBot] Gagal meminta kode pairing:', err.message);
+            console.error(`❌ [WhatsAppBot] Gagal meminta kode pairing (Percobaan #${attempts}):`, err.message);
+            if (attempts < 5 && !this.sock?.authState?.creds?.registered) {
+              console.log('[WhatsAppBot] Mencoba meminta kode pairing kembali dalam 5 detik...');
+              setTimeout(requestPairing, 5000);
+            }
           }
-        }, 4000);
+        };
+
+        setTimeout(requestPairing, 5000);
       }
     }
 
@@ -89,13 +120,28 @@ export class WhatsAppBot {
 
       if (connection === 'close') {
         const statusCode = (lastDisconnect?.error instanceof Boom) ? lastDisconnect.error.output.statusCode : null;
-        const shouldReconnect = statusCode !== DisconnectReason.loggedOut;
-        console.log(`[WhatsAppBot] Connection closed. Reason: ${lastDisconnect?.error?.message || statusCode}. Reconnecting: ${shouldReconnect}`);
+        const errMsg = (lastDisconnect?.error?.message || '').toLowerCase();
+        const isLoggedOut = statusCode === DisconnectReason.loggedOut || statusCode === 401 || statusCode === 403 || errMsg.includes('connection failure') || errMsg.includes('logged out') || errMsg.includes('bad session');
+        const shouldReconnect = !isLoggedOut;
 
-        if (shouldReconnect) {
+        console.log(`[WhatsAppBot] Connection closed. Reason: ${lastDisconnect?.error?.message || statusCode}. StatusCode: ${statusCode}. Reconnecting: ${shouldReconnect}`);
+
+        if (isLoggedOut) {
+          console.log('⚠️ [WhatsAppBot] Sesi WhatsApp sebelumnya telah LOGGED OUT atau TIDAK VALID.');
+          console.log('🔄 [WhatsAppBot] Membersihkan direktori auth_info_baileys secara otomatis agar bot meminta KODE PAIRING BARU...');
+          try {
+            if (fs.existsSync(config.authDir)) {
+              fs.rmSync(config.authDir, { recursive: true, force: true });
+              fs.mkdirSync(config.authDir, { recursive: true });
+            }
+          } catch (cleanErr) {
+            console.error('[WhatsAppBot] Gagal mereset authDir:', cleanErr.message);
+          }
+          console.log('⏳ [WhatsAppBot] Memulai ulang socket dalam 3 detik untuk meminta kode pairing baru...');
           setTimeout(() => this.start(), 3000);
         } else {
-          console.log('[WhatsAppBot] Device logged out. Please restart bot to scan / pair again.');
+          console.log('[WhatsAppBot] Menyambung kembali dalam 3 detik...');
+          setTimeout(() => this.start(), 3000);
         }
       } else if (connection === 'open') {
         this.botJid = this.sock.user?.id ? this.sock.user.id.split(':')[0] + '@s.whatsapp.net' : null;
@@ -202,10 +248,13 @@ export class WhatsAppBot {
       }
     }
 
-    if (config.ownerPhone && resolvedPhone && resolvedPhone.includes(config.ownerPhone)) {
+    const normOwner = normalizePhone(config.ownerPhone);
+    const normPartner = normalizePhone(config.partnerPhone);
+
+    if (normOwner && resolvedPhone && (resolvedPhone === normOwner || resolvedPhone.endsWith(normOwner) || normOwner.endsWith(resolvedPhone))) {
       return { role: 'owner', name: config.ownerName, jid: senderJid, phone: resolvedPhone };
     }
-    if (config.partnerPhone && resolvedPhone && resolvedPhone.includes(config.partnerPhone)) {
+    if (normPartner && resolvedPhone && (resolvedPhone === normPartner || resolvedPhone.endsWith(normPartner) || normPartner.endsWith(resolvedPhone))) {
       return { role: 'partner', name: config.partnerName, jid: senderJid, phone: resolvedPhone };
     }
 

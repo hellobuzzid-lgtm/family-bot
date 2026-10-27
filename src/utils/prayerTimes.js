@@ -1,10 +1,73 @@
 import dayjs from 'dayjs';
 import { getNow } from './formatters.js';
+import { config } from '../config.js';
 
-// Coordinates for Jakarta (default)
-const LATITUDE = -6.2088;
-const LONGITUDE = 106.8456;
-const TIMEZONE_OFFSET = 7; // WIB
+// Predefined coordinates for Indonesian major cities (Kemenag reference)
+export const CITY_COORDINATES = {
+  jambi: {
+    name: 'Kota Jambi',
+    latitude: -1.6101,
+    longitude: 103.6131,
+    timezoneOffset: 7 // WIB
+  },
+  jakarta: {
+    name: 'DKI Jakarta',
+    latitude: -6.2088,
+    longitude: 106.8456,
+    timezoneOffset: 7 // WIB
+  },
+  bandung: {
+    name: 'Bandung',
+    latitude: -6.9175,
+    longitude: 107.6191,
+    timezoneOffset: 7 // WIB
+  },
+  surabaya: {
+    name: 'Surabaya',
+    latitude: -7.2575,
+    longitude: 112.7521,
+    timezoneOffset: 7 // WIB
+  },
+  medan: {
+    name: 'Medan',
+    latitude: 3.5952,
+    longitude: 98.6722,
+    timezoneOffset: 7 // WIB
+  },
+  palembang: {
+    name: 'Palembang',
+    latitude: -2.9761,
+    longitude: 104.7754,
+    timezoneOffset: 7 // WIB
+  },
+  makassar: {
+    name: 'Makassar',
+    latitude: -5.1477,
+    longitude: 119.4327,
+    timezoneOffset: 8 // WITA
+  }
+};
+
+export function getLocationConfig() {
+  const cityKey = (config?.cityName || 'jambi').toLowerCase().trim();
+  if (CITY_COORDINATES[cityKey]) {
+    return CITY_COORDINATES[cityKey];
+  }
+  if (cityKey.includes('jambi')) {
+    return CITY_COORDINATES.jambi;
+  }
+  const customLat = parseFloat(process.env.LATITUDE);
+  const customLon = parseFloat(process.env.LONGITUDE);
+  if (!isNaN(customLat) && !isNaN(customLon)) {
+    return {
+      name: config?.cityName || 'Custom',
+      latitude: customLat,
+      longitude: customLon,
+      timezoneOffset: 7
+    };
+  }
+  return CITY_COORDINATES.jambi;
+}
 
 function toRadians(deg) { return (deg * Math.PI) / 180; }
 function toDegrees(rad) { return (rad * 180) / Math.PI; }
@@ -24,6 +87,10 @@ function calculateJulianDate(year, month, day) {
 }
 
 export function getPrayerTimes(date = null) {
+  const loc = getLocationConfig();
+  const LATITUDE = loc.latitude;
+  const LONGITUDE = loc.longitude;
+  const TIMEZONE_OFFSET = loc.timezoneOffset;
   const d = date ? dayjs(date) : getNow();
   const year = d.year();
   const month = d.month() + 1;
@@ -68,6 +135,7 @@ export function getPrayerTimes(date = null) {
   }
 
   return {
+    city: loc.name,
     subuh: formatTime(noon - haFajr),
     terbit: formatTime(noon - haSunrise, 0),
     dzuhur: formatTime(noon),

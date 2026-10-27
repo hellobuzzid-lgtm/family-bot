@@ -16,8 +16,9 @@ console.log('   - Rp 250.000 ->', parseAmount('Rp 250.000'), '(expected: 250000)
 console.log('   - formatRupiah(1500000) ->', formatRupiah(1500000));
 
 // 2. Test Prayer Times
-console.log('\n2. Testing Prayer Times Calculation (Jakarta / WIB)...');
+console.log('\n2. Testing Prayer Times Calculation (Kota Jambi / WIB)...');
 const pt = getPrayerTimes();
+console.log('   - Wilayah:', pt.city);
 console.log('   - Subuh  :', pt.subuh);
 console.log('   - Dzuhur :', pt.dzuhur);
 console.log('   - Ashar  :', pt.ashar);

@@ -37,8 +37,30 @@ if (!fs.existsSync(authDir)) {
   fs.mkdirSync(authDir, { recursive: true });
 }
 
-const ownerPhoneRaw = process.env.OWNER_PHONE || process.env.FATHER_PHONE || '62895360317212';
-const partnerPhoneRaw = process.env.PARTNER_PHONE || process.env.MOTHER_PHONE || '628975889967';
+// Filter out dummy/sample phone numbers from legacy templates
+const DUMMY_PHONES = [
+  '6281234567890',
+  '6289876543210',
+  '1234567890',
+  '081234567890',
+  '089876543210'
+];
+
+function sanitizePhone(phone, defaultVal) {
+  const norm = normalizePhone(phone);
+  if (!norm || DUMMY_PHONES.includes(norm)) {
+    return defaultVal;
+  }
+  return norm;
+}
+
+const ownerPhoneRaw = sanitizePhone(process.env.OWNER_PHONE || process.env.FATHER_PHONE, '62895360317212');
+const partnerPhoneRaw = sanitizePhone(process.env.PARTNER_PHONE || process.env.MOTHER_PHONE, '628975889967');
+const botPhoneRaw = sanitizePhone(process.env.BOT_PHONE || process.env.PAIRING_NUMBER, '6285183541035');
+
+// Resolve City Name (Default: Kota Jambi)
+const rawCity = (process.env.CITY_NAME || '').trim();
+const resolvedCityName = (!rawCity || rawCity.toLowerCase() === 'jakarta') ? 'Jambi' : rawCity;
 
 export const config = {
   rootDir,
@@ -52,17 +74,17 @@ export const config = {
 
   // Bot Profile
   botName: process.env.BOT_NAME || 'Life Partner',
-  botPhone: normalizePhone(process.env.BOT_PHONE || process.env.PAIRING_NUMBER || '6285183541035'),
-  usePairingCode: process.env.USE_PAIRING_CODE === 'true' || !!(process.env.BOT_PHONE || process.env.PAIRING_NUMBER),
+  botPhone: botPhoneRaw,
+  usePairingCode: process.env.USE_PAIRING_CODE !== 'false',
 
   // Owner (Primary User)
   ownerName: process.env.OWNER_NAME || 'Bro',
-  ownerPhone: normalizePhone(ownerPhoneRaw),
+  ownerPhone: ownerPhoneRaw,
   ownerJid: toJid(ownerPhoneRaw),
 
   // Partner (Calon Istri)
   partnerName: process.env.PARTNER_NAME || 'Calon Istri',
-  partnerPhone: normalizePhone(partnerPhoneRaw),
+  partnerPhone: partnerPhoneRaw,
   partnerJid: toJid(partnerPhoneRaw),
 
   // Group Settings
@@ -71,6 +93,6 @@ export const config = {
 
   // Schedule & Location
   timezone: process.env.TIMEZONE || 'Asia/Jakarta',
-  cityName: process.env.CITY_NAME || 'Jakarta',
+  cityName: resolvedCityName,
   autonomousReminders: process.env.AUTONOMOUS_REMINDERS !== 'false',
 };
