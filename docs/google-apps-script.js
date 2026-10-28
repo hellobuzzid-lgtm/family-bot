@@ -27,13 +27,31 @@
 
 function doPost(e) {
   try {
-    if (!e || !e.postData || !e.postData.contents) {
-      return ContentService.createTextOutput(JSON.stringify({ status: 'error', message: 'No payload' }))
-        .setMimeType(ContentService.MimeType.JSON);
+    var raw = '';
+    if (e && e.postData && e.postData.contents) {
+      raw = e.postData.contents;
+    } else if (e && e.parameter && e.parameter.data) {
+      raw = e.parameter.data;
     }
 
-    var data = JSON.parse(e.postData.contents);
+    var data = {};
+    if (raw) {
+      try {
+        data = JSON.parse(raw);
+      } catch (pErr) {
+        data = e.parameter || {};
+      }
+    } else if (e && e.parameter) {
+      data = e.parameter;
+    }
+
     var ss = SpreadsheetApp.getActiveSpreadsheet();
+    if (!ss) {
+      return ContentService.createTextOutput(JSON.stringify({
+        status: 'error',
+        message: 'No active spreadsheet. Pastikan Apps Script dibuat melalui menu Ekstensi (Extensions) > Apps Script di dalam file Google Spreadsheet Anda.'
+      })).setMimeType(ContentService.MimeType.JSON);
+    }
 
     // 1. SINKRONISASI TRANSAKSI KEUANGAN
     if (data.action === 'TRANSACTION') {

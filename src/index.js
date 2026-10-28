@@ -50,7 +50,7 @@ async function main() {
     );
 
     // 4. Initialize WhatsApp Bot Engine
-    const whatsappBot = new WhatsAppBot(geminiService);
+    const whatsappBot = new WhatsAppBot(geminiService, googleSheetsService);
 
     // 5. Initialize Automated Life Scheduler
     const scheduler = new Scheduler(

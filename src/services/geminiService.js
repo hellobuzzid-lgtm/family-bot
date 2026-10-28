@@ -1,5 +1,6 @@
 import { GoogleGenAI } from '@google/genai';
 import { config } from '../config.js';
+import { parseAmount } from '../utils/formatters.js';
 
 export class GeminiService {
   constructor(promptBuilder, memoryManager, financeManager, goalTracker, routineManager) {
@@ -103,8 +104,14 @@ export class GeminiService {
         const rawText = response.text?.trim();
         if (rawText) {
           // Process and execute any action_json embedded in the response
-          const cleanedText = this.processEmbeddedActions(rawText, speakerInfo);
-          return cleanedText;
+          const { cleanText, actionsExecuted } = this.processEmbeddedActions(rawText, speakerInfo);
+
+          // If Gemini didn't output action_json, check fallback deterministic parser!
+          if (actionsExecuted === 0) {
+            this.checkAndFallbackParseTransaction(messageText, speakerInfo);
+          }
+
+          return cleanText;
         }
       } catch (err) {
         lastError = err;
@@ -118,6 +125,7 @@ export class GeminiService {
 
   processEmbeddedActions(text, speakerInfo) {
     let cleanText = text;
+    let actionsExecuted = 0;
     const actionRegex = /```action_json\s*([\s\S]*?)\s*```/g;
     let match;
 
@@ -126,6 +134,7 @@ export class GeminiService {
       try {
         const actionObj = JSON.parse(jsonStr);
         this.executeAction(actionObj, speakerInfo);
+        actionsExecuted++;
       } catch (err) {
         console.warn('[GeminiService] Failed to parse action_json:', err.message);
       }
@@ -133,7 +142,48 @@ export class GeminiService {
 
     // Strip out the action_json block so user doesn't see the raw json in WhatsApp
     cleanText = cleanText.replace(/```action_json[\s\S]*?```/g, '').trim();
-    return cleanText;
+    return { cleanText, actionsExecuted };
+  }
+
+  checkAndFallbackParseTransaction(text, speakerInfo) {
+    if (!text) return;
+    const clean = text.toLowerCase();
+
+    // Check if user is asking to record something
+    const isRecordIntent = /(catat|rekam|tulis|masukkan|tambah)/i.test(clean);
+    const isExpense = /(pengeluaran|beli|bayar|keluar|belanja|biaya)/i.test(clean);
+    const isIncome = /(pemasukan|masuk|gaji|terima|dapat|omzet|cair)/i.test(clean);
+
+    if (isRecordIntent && (isExpense || isIncome)) {
+      // Find amount pattern: e.g. "30rb", "30k", "2jt", "50.000", "Rp 50000", "100000"
+      const amountMatch = clean.match(/(?:rp\.?\s*)?(\d+(?:[.,]\d+)?\s*(?:jt|juta|rb|ribu|k)?|\d{4,})/i);
+      if (amountMatch) {
+        const rawAmount = amountMatch[0];
+        const parsed = parseAmount(rawAmount);
+        if (parsed && parsed > 0) {
+          const type = isIncome ? 'income' : 'expense';
+
+          let desc = text
+            .replace(/(nex|bot|partner|tolong|bantu|coba|dong|ya|please)/gi, '')
+            .replace(/(catat|rekam|tulis|masukkan|tambah)/gi, '')
+            .replace(/(pengeluaran|pemasukan|sebesar|senilai)/gi, '')
+            .replace(rawAmount, '')
+            .trim();
+
+          if (!desc) desc = type === 'income' ? 'Pemasukan' : 'Pengeluaran';
+
+          console.log(`[GeminiService] 💡 Deterministic fallback triggered: [${type.toUpperCase()}] ${parsed} - ${desc}`);
+          this.financeManager.recordTransaction({
+            type,
+            amount: parsed,
+            category: type === 'income' ? 'Pemasukan' : 'Operasional / Umum',
+            description: desc,
+            isBusiness: /(bisnis|usaha|toko|proyek|klien)/i.test(clean),
+            owner: speakerInfo.role === 'partner' ? 'partner' : 'owner'
+          });
+        }
+      }
+    }
   }
 
   executeAction(actionObj, speakerInfo) {

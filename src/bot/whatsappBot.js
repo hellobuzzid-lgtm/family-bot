@@ -11,8 +11,9 @@ import path from 'path';
 import { config, normalizePhone } from '../config.js';
 
 export class WhatsAppBot {
-  constructor(geminiService) {
+  constructor(geminiService, googleSheetsService = null) {
     this.geminiService = geminiService;
+    this.googleSheetsService = googleSheetsService;
     this.sock = null;
     this.botJid = null;
     this.botLid = null;
@@ -204,6 +205,17 @@ export class WhatsAppBot {
     // Determine if bot should respond
     const shouldRespond = this.checkShouldRespond(msg, text, isGroup, speakerInfo);
     if (!shouldRespond) {
+      return;
+    }
+
+    const cleanLower = (text || '').toLowerCase().trim();
+    const isSpreadsheetTest = /(cek|tes|test|status)\s*(spreadsheet|spreedsheet|sheet|gss)/i.test(cleanLower) ||
+                             /(spreadsheet|spreedsheet)\s*(cek|tes|test|status|error|kenapa)/i.test(cleanLower);
+
+    if (isSpreadsheetTest && this.googleSheetsService) {
+      console.log('[WhatsAppBot] 📊 Diagnostic command triggered: Cek Spreadsheet');
+      const testResult = await this.googleSheetsService.testConnection();
+      await this.sendMessageWithTyping(chatJid, testResult, msg);
       return;
     }
 
