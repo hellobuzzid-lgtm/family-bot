@@ -7,8 +7,13 @@ import { formatRupiah, parseAmount, getNow } from '../utils/formatters.js';
 const financesFilePath = path.join(config.dataDir, 'finances.json');
 
 export class FinanceManager {
-  constructor() {
+  constructor(googleSheetsService = null) {
+    this.googleSheetsService = googleSheetsService;
     this.data = this.loadData();
+  }
+
+  setGoogleSheetsService(service) {
+    this.googleSheetsService = service;
   }
 
   loadData() {
@@ -90,6 +95,12 @@ export class FinanceManager {
 
     this.saveData();
     console.log(`[FinanceManager] Recorded tx: [${newTx.type.toUpperCase()}] ${formatRupiah(parsedAmount)} - ${newTx.description}`);
+
+    if (this.googleSheetsService) {
+      this.googleSheetsService.appendTransaction(newTx).catch(err => {
+        console.warn('[FinanceManager] Failed to sync transaction to Google Sheets:', err.message);
+      });
+    }
 
     return {
       success: true,

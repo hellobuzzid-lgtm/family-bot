@@ -7,9 +7,14 @@ import { getPrayerTimes } from '../utils/prayerTimes.js';
 const routinesFilePath = path.join(config.dataDir, 'routines.json');
 
 export class RoutineManager {
-  constructor() {
+  constructor(googleSheetsService = null) {
+    this.googleSheetsService = googleSheetsService;
     this.data = this.loadData();
     this.ensureToday();
+  }
+
+  setGoogleSheetsService(service) {
+    this.googleSheetsService = service;
   }
 
   loadData() {
@@ -93,6 +98,13 @@ export class RoutineManager {
 
     this.saveData();
     console.log(`[RoutineManager] Habit logged: ${habit} = ${value} (${notes})`);
+
+    if (this.googleSheetsService) {
+      this.googleSheetsService.appendHabit({ habit, value, notes }).catch(err => {
+        console.warn('[RoutineManager] Failed to sync habit to Google Sheets:', err.message);
+      });
+    }
+
     return r;
   }
 

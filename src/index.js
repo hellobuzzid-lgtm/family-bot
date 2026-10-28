@@ -3,6 +3,7 @@ import { MemoryManager } from './services/memoryManager.js';
 import { FinanceManager } from './services/financeManager.js';
 import { GoalTracker } from './services/goalTracker.js';
 import { RoutineManager } from './services/routineManager.js';
+import { GoogleSheetsService } from './services/googleSheetsService.js';
 import { MasterPromptBuilder } from './core/masterPrompt.js';
 import { GeminiService } from './services/geminiService.js';
 import { WhatsAppBot } from './bot/whatsappBot.js';
@@ -19,15 +20,17 @@ console.log(`📱 Bot Number: ${config.botPhone || 'Not set'}`);
 console.log(`🤖 Gemini Model: ${config.geminiModel}`);
 console.log(`🕒 Timezone: ${config.timezone} | City: ${config.cityName}`);
 console.log(`📂 Storage Path: ${config.storageDir}`);
+console.log(`📊 Google Sheets: ${config.googleSheetWebhookUrl ? 'Configured ✅' : 'Not configured (Local DB active)'}`);
 console.log('================================================================\n');
 
 async function main() {
   try {
     // 1. Initialize core state & database managers
+    const googleSheetsService = new GoogleSheetsService();
     const memoryManager = new MemoryManager();
-    const financeManager = new FinanceManager();
-    const goalTracker = new GoalTracker();
-    const routineManager = new RoutineManager();
+    const financeManager = new FinanceManager(googleSheetsService);
+    const goalTracker = new GoalTracker(googleSheetsService);
+    const routineManager = new RoutineManager(googleSheetsService);
 
     // 2. Initialize prompt builder
     const promptBuilder = new MasterPromptBuilder(

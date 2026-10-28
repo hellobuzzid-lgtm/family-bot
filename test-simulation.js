@@ -2,11 +2,18 @@ import { MemoryManager } from './src/services/memoryManager.js';
 import { FinanceManager } from './src/services/financeManager.js';
 import { GoalTracker } from './src/services/goalTracker.js';
 import { RoutineManager } from './src/services/routineManager.js';
+import { GoogleSheetsService } from './src/services/googleSheetsService.js';
 import { MasterPromptBuilder } from './src/core/masterPrompt.js';
 import { getPrayerTimes } from './src/utils/prayerTimes.js';
 import { formatRupiah, parseAmount } from './src/utils/formatters.js';
 
 console.log('🧪 [TEST] Running AI Personal Life Partner unit and integration test...\n');
+
+// 0. Test Google Sheets Service
+console.log('0. Testing Google Sheets Service...');
+const gss = new GoogleSheetsService();
+console.log('   - Is Configured:', gss.isConfigured());
+console.log('   - Sheet URL:', gss.getSpreadsheetUrl() || '(none)');
 
 // 1. Test Formatters
 console.log('1. Testing Formatters...');
@@ -27,7 +34,7 @@ console.log('   - Isya   :', pt.isya);
 
 // 3. Test Finance Manager
 console.log('\n3. Testing Finance Manager...');
-const fm = new FinanceManager();
+const fm = new FinanceManager(gss);
 const tx1 = fm.recordTransaction({
   type: 'income',
   amount: '10jt',
@@ -49,7 +56,7 @@ console.log('   - Personal Balance:', formatRupiah(fm.data.balances.personalBala
 
 // 4. Test Goal Tracker
 console.log('\n4. Testing Goal Tracker...');
-const gt = new GoalTracker();
+const gt = new GoalTracker(gss);
 const newGoal = gt.addGoal({
   title: 'Belajar AI & Finansial 30 menit',
   category: 'learning',
@@ -60,7 +67,7 @@ console.log('   - Active Goals:\n' + gt.getActiveGoalsSummary('owner'));
 
 // 5. Test Routine Manager
 console.log('\n5. Testing Routine Manager...');
-const rm = new RoutineManager();
+const rm = new RoutineManager(gss);
 rm.logHabit({ habit: 'prayer', value: 'subuh', notes: 'Salat berjamaah tepat waktu' });
 rm.logHabit({ habit: 'water', value: '2', notes: 'Gelas air putih' });
 rm.logHabit({ habit: 'skincare_morning', value: 'selesai', notes: 'Sunscreen dipakai' });

@@ -6,8 +6,13 @@ import { getNow } from '../utils/formatters.js';
 const goalsFilePath = path.join(config.dataDir, 'goals.json');
 
 export class GoalTracker {
-  constructor() {
+  constructor(googleSheetsService = null) {
+    this.googleSheetsService = googleSheetsService;
     this.goals = this.loadGoals();
+  }
+
+  setGoogleSheetsService(service) {
+    this.googleSheetsService = service;
   }
 
   loadGoals() {
@@ -58,6 +63,13 @@ export class GoalTracker {
     this.goals.push(newGoal);
     this.saveGoals();
     console.log(`[GoalTracker] New target added: "${newGoal.title}" (${newGoal.category})`);
+
+    if (this.googleSheetsService) {
+      this.googleSheetsService.appendGoal(newGoal).catch(err => {
+        console.warn('[GoalTracker] Failed to sync goal to Google Sheets:', err.message);
+      });
+    }
+
     return newGoal;
   }
 

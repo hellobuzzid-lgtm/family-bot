@@ -95,4 +95,8 @@ export const config = {
   timezone: process.env.TIMEZONE || 'Asia/Jakarta',
   cityName: resolvedCityName,
   autonomousReminders: process.env.AUTONOMOUS_REMINDERS !== 'false',
+
+  // Google Spreadsheet Integration
+  googleSheetWebhookUrl: process.env.GOOGLE_SHEET_WEBHOOK_URL || '',
+  googleSheetUrl: process.env.GOOGLE_SHEET_URL || '',
 };
