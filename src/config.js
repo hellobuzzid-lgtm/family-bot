@@ -97,6 +97,6 @@ export const config = {
   autonomousReminders: process.env.AUTONOMOUS_REMINDERS !== 'false',
 
   // Google Spreadsheet Integration
-  googleSheetWebhookUrl: process.env.GOOGLE_SHEET_WEBHOOK_URL || '',
+  googleSheetWebhookUrl: process.env.GOOGLE_SHEET_WEBHOOK_URL || 'https://script.google.com/macros/s/AKfycbzt8mAlEaHSjpnvLtuci49gATqXB-KMoLNCGY8Ttz_ltc79jzg3xaGEnd5vXbLCEseJ/exec',
   googleSheetUrl: process.env.GOOGLE_SHEET_URL || '',
 };
