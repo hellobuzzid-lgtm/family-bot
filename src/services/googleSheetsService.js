@@ -3,18 +3,28 @@ import { getNow } from '../utils/formatters.js';
 
 export class GoogleSheetsService {
   constructor() {
-    this.webhookUrl = (config.googleSheetWebhookUrl || '').trim();
+    this.webhookUrl = this.cleanWebhookUrl(config.googleSheetWebhookUrl || '');
     this.sheetUrl = (config.googleSheetUrl || '').trim();
 
     if (this.isConfigured()) {
       if (!this.webhookUrl.includes('/exec')) {
         console.warn('⚠️ [GoogleSheetsService] PERINGATAN: GOOGLE_SHEET_WEBHOOK_URL tampaknya bukan URL Web App (/exec)! Pastikan menggunakan URL berakhiran /exec.');
       } else {
-        console.log('📊 [GoogleSheetsService] Google Spreadsheet Webhook connected:', this.webhookUrl.slice(0, 35) + '...');
+        console.log('📊 [GoogleSheetsService] Google Spreadsheet Webhook connected:', this.webhookUrl.slice(0, 40) + '...');
       }
     } else {
       console.log('ℹ️ [GoogleSheetsService] GOOGLE_SHEET_WEBHOOK_URL belum diset di .env / Variables. Sinkronisasi Google Sheets nonaktif.');
     }
+  }
+
+  cleanWebhookUrl(url) {
+    if (!url) return '';
+    let cleaned = String(url).trim();
+    // Remove surrounding quotes if user wrapped URL in quotes
+    cleaned = cleaned.replace(/^["']|["']$/g, '').trim();
+    // Remove /u/0/, /u/1/, /u/2/ injected by Google multi-account login
+    cleaned = cleaned.replace(/\/macros\/u\/\d+\/s\//i, '/macros/s/');
+    return cleaned;
   }
 
   isConfigured() {
@@ -99,9 +109,9 @@ export class GoogleSheetsService {
       return `❌ *Google Spreadsheet Belum Terhubung!*\n\nVariabel *GOOGLE_SHEET_WEBHOOK_URL* belum diisi di Railway (Variables).\n\n📌 *Langkah Perbaikan:*\n1. Buka Railway > Project Anda > Service Bot > tab *Variables*.\n2. Tambahkan variabel:\n   *GOOGLE_SHEET_WEBHOOK_URL* = (URL Apps Script berakhiran /exec)\n3. Setelah disimpan, bot akan merestart otomatis dalam beberapa detik.`;
     }
 
-    const trimmed = this.webhookUrl.trim();
-    if (!trimmed.includes('/exec')) {
-      return `⚠️ *URL Webhook Tidak Sesuai!*\n\nURL yang terpasang saat ini:\n\`${trimmed}\`\n\n📌 *Penyebab:* URL tersebut bukan URL Web App.\nURL Webhook Google Apps Script yang benar WAJIB berformat:\n\`https://script.google.com/macros/s/.../exec\`\n\n(Bukan link spreadsheet dan bukan link editor /edit). Silakan periksa kembali langkah deployment di Apps Script.`;
+    const cleanUrl = this.cleanWebhookUrl(this.webhookUrl);
+    if (!cleanUrl.includes('/exec')) {
+      return `⚠️ *URL Webhook Tidak Sesuai!*\n\nURL yang terpasang saat ini:\n\`${cleanUrl}\`\n\n📌 *Penyebab:* URL tersebut bukan URL Web App.\nURL Webhook Google Apps Script yang benar WAJIB berformat:\n\`https://script.google.com/macros/s/.../exec\`\n\n(Bukan link spreadsheet dan bukan link editor /edit). Silakan periksa kembali langkah deployment di Apps Script.`;
     }
 
     try {
@@ -120,7 +130,12 @@ export class GoogleSheetsService {
       if (pingResult.success) {
         return `✅ *Google Spreadsheet BERHASIL Terhubung!*\n\nNEX baru saja mengirimkan 1 baris transaksi uji coba (Pemasukan Rp 10.000) ke spreadsheet Anda.\n\n📊 *Silakan cek spreadsheet Anda sekarang:* baris tersebut sudah otomatis muncul di tab *Transaksi Keuangan*.`;
       } else {
-        return `❌ *Gagal Mengirim ke Spreadsheet!*\n\n*Pesan Error:* ${pingResult.error || pingResult.reason || 'Unknown'}\n\n📌 *Solusi Paling Sering:*\nPastikan saat Deploy Apps Script, opsi *Who has access (Siapa yang memiliki akses)* dipilih **Anyone (Siapa saja)**, bukan 'Only myself'.`;
+        const errMsg = String(pingResult.error || pingResult.reason || '');
+        if (errMsg.includes('403')) {
+          return `❌ *Akses Ditolak Google (HTTP 403 Forbidden)*\n\nGoogle memblokir koneksi bot. Ini biasanya terjadi karena salah satu dari 3 hal berikut:\n\n1. **Wajib Buat "Penerapan Baru" (New Deployment):**\n   Jika Anda baru saja mengubah izin ke "Siapa saja", Google *tidak otomatis memperbarui link lama*. Anda harus klik:\n   👉 **Terapkan (Deploy)** > **Penerapan baru (New deployment)** > pilih **Aplikasi web** > klik **Terapkan**.\n   Lalu salin URL \`/exec\` yang baru dan masukkan ke Railway.\n\n2. **"Jalankan Sebagai" (Execute as):**\n   Pastikan dipilih **Saya (Me / email Anda)**, *BUKAN* 'Pengguna yang mengakses aplikasi web'.\n\n3. **Bukan Akun Kantor/Kampus:**\n   Pastikan membuat spreadsheet menggunakan akun Gmail pribadi (@gmail.com), karena akun Workspace kantor sering mengunci akses eksternal.`;
+        }
+
+        return `❌ *Gagal Mengirim ke Spreadsheet!*\n\n*Pesan Error:* ${errMsg}\n\n📌 *Solusi Paling Sering:*\nPastikan saat Deploy Apps Script, opsi *Who has access (Siapa yang memiliki akses)* dipilih **Anyone (Siapa saja)**, bukan 'Only myself'.`;
       }
     } catch (err) {
       return `❌ *Gagal Tes Koneksi:* ${err.message}`;
@@ -133,17 +148,18 @@ export class GoogleSheetsService {
   async sendPayload(payload) {
     if (!this.isConfigured()) return { success: false, reason: 'NOT_CONFIGURED' };
 
-    const url = this.webhookUrl.trim();
+    const url = this.cleanWebhookUrl(this.webhookUrl);
 
     try {
       const controller = new AbortController();
       const timeoutId = setTimeout(() => controller.abort(), 15000);
 
-      // Using text/plain prevents CORS preflight and body drops on Google Apps Script proxy
+      // Using text/plain and a standard User-Agent prevents Google WAF / anti-bot 403 blocks
       const response = await fetch(url, {
         method: 'POST',
         headers: {
-          'Content-Type': 'text/plain;charset=utf-8'
+          'Content-Type': 'text/plain;charset=utf-8',
+          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
         },
         body: JSON.stringify(payload),
         redirect: 'follow',
