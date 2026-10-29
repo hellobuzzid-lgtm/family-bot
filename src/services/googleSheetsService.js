@@ -20,9 +20,7 @@ export class GoogleSheetsService {
   cleanWebhookUrl(url) {
     if (!url) return '';
     let cleaned = String(url).trim();
-    // Remove surrounding quotes if user wrapped URL in quotes
     cleaned = cleaned.replace(/^["']|["']$/g, '').trim();
-    // Remove /u/0/, /u/1/, /u/2/ injected by Google multi-account login
     cleaned = cleaned.replace(/\/macros\/u\/\d+\/s\//i, '/macros/s/');
     return cleaned;
   }
@@ -54,6 +52,71 @@ export class GoogleSheetsService {
         isBusiness: Boolean(transaction.isBusiness),
         owner: transaction.owner || 'owner'
       }
+    };
+
+    return this.sendPayload(payload);
+  }
+
+  /**
+   * Update existing transaction in Google Sheets by ID
+   */
+  async updateTransaction(transaction) {
+    if (!this.isConfigured()) return { success: false, reason: 'NOT_CONFIGURED' };
+
+    const payload = {
+      action: 'UPDATE_TRANSACTION',
+      timestamp: getNow().format('YYYY-MM-DD HH:mm:ss'),
+      transaction: {
+        id: transaction.id,
+        date: transaction.date || getNow().format('YYYY-MM-DD HH:mm:ss'),
+        type: transaction.type,
+        amount: transaction.amount,
+        category: transaction.category || 'Umum',
+        description: transaction.description || '',
+        isBusiness: Boolean(transaction.isBusiness),
+        owner: transaction.owner || 'owner'
+      }
+    };
+
+    return this.sendPayload(payload);
+  }
+
+  /**
+   * Delete / Cancel transaction in Google Sheets by ID
+   */
+  async deleteTransaction(transactionId) {
+    if (!this.isConfigured()) return { success: false, reason: 'NOT_CONFIGURED' };
+
+    const payload = {
+      action: 'DELETE_TRANSACTION',
+      timestamp: getNow().format('YYYY-MM-DD HH:mm:ss'),
+      transaction: {
+        id: transactionId
+      }
+    };
+
+    return this.sendPayload(payload);
+  }
+
+  /**
+   * Reconcile all transactions in Google Sheets
+   */
+  async reconcileAllTransactions(transactions) {
+    if (!this.isConfigured()) return { success: false, reason: 'NOT_CONFIGURED' };
+
+    const payload = {
+      action: 'RECONCILE_ALL',
+      timestamp: getNow().format('YYYY-MM-DD HH:mm:ss'),
+      transactions: transactions.map(t => ({
+        id: t.id,
+        date: t.date,
+        type: t.type,
+        amount: t.amount,
+        category: t.category,
+        description: t.description,
+        isBusiness: Boolean(t.isBusiness),
+        owner: t.owner || 'owner'
+      }))
     };
 
     return this.sendPayload(payload);
@@ -168,7 +231,6 @@ export class GoogleSheetsService {
       const controller = new AbortController();
       const timeoutId = setTimeout(() => controller.abort(), 15000);
 
-      // Using text/plain and a standard User-Agent prevents Google WAF / anti-bot 403 blocks
       const response = await fetch(url, {
         method: 'POST',
         headers: {

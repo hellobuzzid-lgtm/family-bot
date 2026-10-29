@@ -1,6 +1,6 @@
 import { GoogleGenAI } from '@google/genai';
 import { config } from '../config.js';
-import { parseAmount } from '../utils/formatters.js';
+import { parseAmount, formatRupiah } from '../utils/formatters.js';
 
 export class GeminiService {
   constructor(promptBuilder, memoryManager, financeManager, goalTracker, routineManager) {
@@ -48,44 +48,49 @@ export class GeminiService {
     }
 
     const currentMsgPrompt = `Pesan baru dari ${speakerInfo.name} (${speakerInfo.role}): "${messageText || ''}"`;
-    const fullUserPrompt = `${historyContext}\n${currentMsgPrompt}\n\nJawablah sebagai AI Personal Life Partner. Bersikaplah dewasa, logis, jujur, santai, dan bersahabat:`;
+    const promptCombined = systemPrompt + historyContext + '\n\n' + currentMsgPrompt;
 
+    // Fast and unmetered candidate models
     const candidateModels = [
       'gemini-3.5-flash-lite',
       'gemini-flash-lite-latest',
-      'gemini-3.1-flash-lite',
-      'gemini-3.7-flash',
-      'gemini-3.8-flash'
+      'gemini-3.1-flash-lite'
     ];
 
-    const timeoutMs = 28000;
-    const callWithTimeout = (promise) => Promise.race([
-      promise,
-      new Promise((_, reject) => setTimeout(() => reject(new Error('TIMEOUT_28S')), timeoutMs))
-    ]);
+    if (config.geminiModel && !candidateModels.includes(config.geminiModel)) {
+      candidateModels.unshift(config.geminiModel);
+    }
 
     let lastError = null;
 
+    const callWithTimeout = (promise, ms = 15000) => {
+      let timeoutId;
+      const timeoutPromise = new Promise((_, reject) => {
+        timeoutId = setTimeout(() => reject(new Error('AI Request Timeout (15s)')), ms);
+      });
+      return Promise.race([promise, timeoutPromise]).finally(() => clearTimeout(timeoutId));
+    };
+
     for (const model of candidateModels) {
       try {
+        console.log(`[GeminiService] Calling Gemini API (Model: ${model})...`);
+
         const contents = [];
-        if (media && media.buffer && media.mimeType) {
+        if (media && media.buffer && media.mimetype) {
           contents.push({
-            role: 'user',
             parts: [
-              { text: fullUserPrompt },
               {
                 inlineData: {
-                  mimeType: media.mimeType,
-                  data: media.buffer.toString('base64')
+                  data: Buffer.from(media.buffer).toString('base64'),
+                  mimeType: media.mimetype
                 }
-              }
+              },
+              { text: promptCombined }
             ]
           });
         } else {
           contents.push({
-            role: 'user',
-            parts: [{ text: fullUserPrompt }]
+            parts: [{ text: promptCombined }]
           });
         }
 
@@ -140,22 +145,76 @@ export class GeminiService {
       }
     }
 
-    // Strip out the action_json block so user doesn't see the raw json in WhatsApp
     cleanText = cleanText.replace(/```action_json[\s\S]*?```/g, '').trim();
     return { cleanText, actionsExecuted };
   }
 
+  /**
+   * DETERMINISTIC PARSER & CORRECTION FALLBACK
+   * Strictly distinguishes between NEW transactions, CORRECTIONS, and DELETIONS.
+   */
   checkAndFallbackParseTransaction(text, speakerInfo) {
     if (!text) return;
-    const clean = text.toLowerCase();
+    const clean = text.toLowerCase().trim();
 
-    // Check if user is asking to record something
+    // 1. Check if user is asking to CORRECT a previous transaction
+    const isCorrectionIntent = /(^|\s|[^a-zA-Z0-9])(salah|ralat|seharusnya|koreksi|ubah|ganti|bukan\s*(pemasukan|pengeluaran|tabungan|utang)|salah\s*(catat|ketik|masuk)|revisi)($|\s|[^a-zA-Z0-9])/i.test(clean);
+    
+    // 2. Check if user is asking to CANCEL/DELETE a transaction
+    const isDeletionIntent = /(^|\s|[^a-zA-Z0-9])(hapus|batal|batalkan|delete|cancel|buang)\s*(transaksi|pencatatan|pengeluaran|pemasukan|tadi|kemarin)?/i.test(clean);
+
+    if (isCorrectionIntent) {
+      console.log(`[GeminiService] 🔍 Detected CORRECTION intent: "${text}"`);
+
+      // Determine target updates
+      const isExpense = /(pengeluaran|beli|bayar|keluar|belanja|biaya)/i.test(clean);
+      const isIncome = /(pemasukan|masuk|gaji|terima|dapat|omzet|cair)/i.test(clean);
+      const amountMatch = clean.match(/(?:rp\.?\s*)?(\d+(?:[.,]\d+)?\s*(?:jt|juta|rb|ribu|k)?|\d{4,})/i);
+      const parsedAmount = amountMatch ? parseAmount(amountMatch[0]) : null;
+
+      const updates = {};
+      if (isExpense && !clean.includes('bukan pengeluaran')) updates.type = 'expense';
+      if (isIncome && !clean.includes('bukan pemasukan')) updates.type = 'income';
+      if (parsedAmount && parsedAmount > 0) updates.amount = parsedAmount;
+
+      const owner = speakerInfo.role === 'partner' ? 'partner' : 'owner';
+      const matchResult = this.financeManager.findTransactionForCorrection({
+        text,
+        amount: parsedAmount,
+        owner
+      });
+
+      if (matchResult.status === 'found') {
+        const targetTx = matchResult.transaction;
+        console.log(`[GeminiService] 💡 Deterministic correction executing on ID: ${targetTx.id}`);
+        this.financeManager.correctTransaction(targetTx.id, updates, {
+          reason: `Koreksi deterministik: ${text}`
+        });
+      } else if (matchResult.status === 'ambiguous') {
+        console.log(`[GeminiService] ⚠️ Ambiguous transaction match for correction: ${matchResult.candidates?.length} candidates found.`);
+      }
+      return; // NEVER fall through to record a new transaction!
+    }
+
+    if (isDeletionIntent) {
+      console.log(`[GeminiService] 🔍 Detected DELETION intent: "${text}"`);
+      const owner = speakerInfo.role === 'partner' ? 'partner' : 'owner';
+      const matchResult = this.financeManager.findTransactionForCorrection({ text, owner });
+      if (matchResult.status === 'found') {
+        console.log(`[GeminiService] 💡 Deterministic deletion executing on ID: ${matchResult.transaction.id}`);
+        this.financeManager.deleteTransaction(matchResult.transaction.id, {
+          reason: `Pembatalan deterministik: ${text}`
+        });
+      }
+      return; // NEVER fall through to record a new transaction!
+    }
+
+    // 3. New Transaction Recording Intent
     const isRecordIntent = /(catat|rekam|tulis|masukkan|tambah)/i.test(clean);
     const isExpense = /(pengeluaran|beli|bayar|keluar|belanja|biaya)/i.test(clean);
     const isIncome = /(pemasukan|masuk|gaji|terima|dapat|omzet|cair)/i.test(clean);
 
     if (isRecordIntent && (isExpense || isIncome)) {
-      // Find amount pattern: e.g. "30rb", "30k", "2jt", "50.000", "Rp 50000", "100000"
       const amountMatch = clean.match(/(?:rp\.?\s*)?(\d+(?:[.,]\d+)?\s*(?:jt|juta|rb|ribu|k)?|\d{4,})/i);
       if (amountMatch) {
         const rawAmount = amountMatch[0];
@@ -192,6 +251,8 @@ export class GeminiService {
     console.log(`[GeminiService] Executing auto action: ${action}`, data);
 
     try {
+      const owner = data?.owner || (speakerInfo.role === 'partner' ? 'partner' : 'owner');
+
       switch (action) {
         case 'RECORD_TRANSACTION':
           this.financeManager.recordTransaction({
@@ -200,8 +261,55 @@ export class GeminiService {
             category: data.category || 'Umum',
             description: data.description || '',
             isBusiness: Boolean(data.isBusiness),
-            owner: data.owner || (speakerInfo.role === 'partner' ? 'partner' : 'owner')
+            owner,
+            idempotencyKey: data.idempotencyKey
           });
+          break;
+
+        case 'CORRECT_TRANSACTION':
+          {
+            let targetId = data.targetId;
+            if (!targetId || targetId === 'tx_xxxx') {
+              const matchResult = this.financeManager.findTransactionForCorrection({
+                text: `${data.description || ''} ${data.amount || ''}`,
+                amount: data.amount,
+                type: data.type,
+                owner
+              });
+              if (matchResult.status === 'found') {
+                targetId = matchResult.transaction.id;
+              }
+            }
+            if (targetId && targetId !== 'tx_xxxx') {
+              this.financeManager.correctTransaction(targetId, {
+                type: data.type,
+                amount: data.amount,
+                category: data.category,
+                description: data.description,
+                isBusiness: data.isBusiness
+              }, { reason: data.reason || 'Koreksi via AI' });
+            } else {
+              console.warn(`[GeminiService] CORRECT_TRANSACTION targetId not resolved`);
+            }
+          }
+          break;
+
+        case 'DELETE_TRANSACTION':
+          {
+            let targetId = data.targetId;
+            if (!targetId || targetId === 'tx_xxxx') {
+              const matchResult = this.financeManager.findTransactionForCorrection({
+                text: data.description || '',
+                owner
+              });
+              if (matchResult.status === 'found') {
+                targetId = matchResult.transaction.id;
+              }
+            }
+            if (targetId && targetId !== 'tx_xxxx') {
+              this.financeManager.deleteTransaction(targetId, { reason: data.reason || 'Dibatalkan via AI' });
+            }
+          }
           break;
 
         case 'SET_GOAL':
@@ -211,7 +319,7 @@ export class GeminiService {
             targetDate: data.targetDate,
             metrics: data.metrics,
             strategy: data.strategy,
-            owner: data.owner || (speakerInfo.role === 'partner' ? 'partner' : 'owner')
+            owner
           });
           break;
 
@@ -219,7 +327,7 @@ export class GeminiService {
           this.memoryManager.addMemory({
             content: data.content,
             category: data.category || 'personal',
-            scope: data.scope || (speakerInfo.role === 'partner' ? 'partner' : 'owner')
+            scope: data.scope || owner
           });
           break;
 

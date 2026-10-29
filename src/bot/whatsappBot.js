@@ -9,6 +9,7 @@ import { Boom } from '@hapi/boom';
 import fs from 'fs';
 import path from 'path';
 import { config, normalizePhone } from '../config.js';
+import { formatRupiah } from '../utils/formatters.js';
 
 export class WhatsAppBot {
   constructor(geminiService, googleSheetsService = null) {
@@ -232,6 +233,56 @@ export class WhatsAppBot {
       return;
     }
 
+    // Audit & Rekonsiliasi Database Keuangan
+    const isAuditCommand = /(audit|rekonsiliasi|sinkron ulang)\s*(keuangan|transaksi|saldo|database)/i.test(cleanLower);
+    if (isAuditCommand && this.geminiService?.financeManager) {
+      console.log('[WhatsAppBot] 🛡️ Audit & Rekonsiliasi Command Triggered');
+      await this.sendMessageWithTyping(chatJid, '⏳ *Sedang melakukan audit dan rekonsiliasi data transaksi...*', msg);
+      const auditResult = this.geminiService.financeManager.auditAndReconcile();
+
+      if (this.googleSheetsService) {
+        const activeTxs = this.geminiService.financeManager.data.transactions.filter(t => t.status === 'active');
+        await this.googleSheetsService.reconcileAllTransactions(activeTxs);
+      }
+
+      const reportMsg = `🛡️ *LAPORAN AUDIT & REKONSILIASI KEUANGAN*\n\n` +
+        `• Total Transaksi: *${auditResult.totalTransactions}*\n` +
+        `• Transaksi Aktif Valid: *${auditResult.activeTransactions}*\n` +
+        `• Duplikat Diarsipkan: *${auditResult.duplicatesFound}*\n` +
+        `• Data Corrupt/Invalid: *${auditResult.corruptedFound}*\n\n` +
+        `💰 *Rekonsiliasi Saldo Akhir (SSOT):*\n` +
+        `• Saldo Pribadi: *${formatRupiah(auditResult.reconciledBalances.personalBalance)}*\n` +
+        `• Saldo Bisnis: *${formatRupiah(auditResult.reconciledBalances.businessBalance)}*\n` +
+        `• Tabungan Rencana: *${formatRupiah(auditResult.reconciledBalances.savingsBalance)}*\n\n` +
+        `✅ *Seluruh laporan mingguan, bulanan, dan Google Spreadsheet telah diselaraskan secara konsisten.*`;
+
+      await this.sendMessageWithTyping(chatJid, reportMsg, msg);
+      return;
+    }
+
+    // Safety check: Ambiguity handling for corrections (Kasus F)
+    const isCorrectionIntent = /(^|\s|[^a-zA-Z0-9])(salah|ralat|seharusnya|koreksi|ubah|ganti|bukan\s*(pemasukan|pengeluaran|tabungan|utang)|salah\s*(catat|ketik|masuk)|revisi)($|\s|[^a-zA-Z0-9])/i.test(cleanLower);
+    if (isCorrectionIntent && this.geminiService?.financeManager) {
+      const match = this.geminiService.financeManager.findTransactionForCorrection({
+        text,
+        owner: speakerInfo.role === 'partner' ? 'partner' : 'owner'
+      });
+
+      if (match.status === 'ambiguous') {
+        console.log('[WhatsAppBot] ⚠️ Ambiguous correction detected, prompting user for choice');
+        const candidateList = match.candidates.slice(0, 4).map((c, idx) =>
+          `${idx + 1}. [ID: ${c.id}] ${c.date.split(' ')[0]} | ${c.type.toUpperCase()}: ${formatRupiah(c.amount)} ("${c.description}")`
+        ).join('\n');
+
+        const ambiguousMsg = `⚠️ *Konfirmasi Koreksi Transaksi*\n\n` +
+          `NEX menemukan beberapa transaksi yang serupa dengan yang ingin Anda koreksi:\n\n${candidateList}\n\n` +
+          `📌 *Silakan sebutkan nomor urut atau ID transaksinya* (contoh: *"Koreksi nomor 1 jadi pengeluaran"*) agar data Anda diperbarui secara tepat dan akurat.`;
+
+        await this.sendMessageWithTyping(chatJid, ambiguousMsg, msg);
+        return;
+      }
+    }
+
     console.log(`[WhatsAppBot] 💬 Processing message from ${speakerInfo.name} (${speakerInfo.role}) in ${isGroup ? 'Group' : 'Private'}: "${text || '[Media]'}"`);
 
     // Generate AI Response
@@ -326,8 +377,8 @@ export class WhatsAppBot {
     }
 
     // 5. Check if parent/owner asks for specific life partner utilities in group:
-    // (e.g. tanya jadwal salat, minta evaluasi, tanya keuangan bersama, minta saran, rekap mingguan/bulanan)
-    const utilityKeywords = /(jadwal salat|waktu salat|evaluasi|rekap|ringkasan|catat|pengeluaran|pemasukan|keuangan|saran|pendapat kamu|menurut kamu|target kita)/i;
+    // (e.g. tanya jadwal salat, minta evaluasi, tanya keuangan bersama, minta saran, rekap, koreksi, audit)
+    const utilityKeywords = /(jadwal salat|waktu salat|evaluasi|rekap|ringkasan|catat|koreksi|ralat|audit|rekonsiliasi|pengeluaran|pemasukan|keuangan|saran|pendapat kamu|menurut kamu|target kita)/i;
     if (utilityKeywords.test(lowerText)) {
       console.log(`[WhatsAppBot] 🎯 Triggered by UTILITY KEYWORD: "${cleanText}"`);
       return true;

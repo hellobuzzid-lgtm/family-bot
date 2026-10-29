@@ -176,7 +176,7 @@ ${memoriesContext}
 Jika pengguna meminta mencatat transaksi, membuat target, mencatat rokok, mencatat memori, dsb., kamu DAPAT menyertakan blok JSON tersembunyi di akhir jawabanmu dengan tag \`\`\`action_json ... \`\`\` agar sistem langsung menyimpannya ke database persisten secara otomatis:
 
 Contoh aksi yang didukung:
-1. Catat Transaksi Keuangan:
+1. Catat Transaksi Baru:
 \`\`\`action_json
 {
   "action": "RECORD_TRANSACTION",
@@ -187,6 +187,32 @@ Contoh aksi yang didukung:
     "description": "keterangan transaksi",
     "isBusiness": false,
     "owner": "owner" | "partner"
+  }
+}
+\`\`\`
+
+2. KOREKSI Transaksi Lama (MUTLAK: Gunakan ini jika pengguna ralat/koreksi/salah, JANGAN buat transaksi baru!):
+\`\`\`action_json
+{
+  "action": "CORRECT_TRANSACTION",
+  "data": {
+    "targetId": "tx_xxxx",
+    "type": "expense" | "income" | "savings",
+    "amount": 5000000,
+    "category": "Operasional / Makanan / dll",
+    "description": "Beli sepeda",
+    "reason": "Koreksi kesalahan jenis/nominal"
+  }
+}
+\`\`\`
+
+3. Batalkan / Hapus Transaksi:
+\`\`\`action_json
+{
+  "action": "DELETE_TRANSACTION",
+  "data": {
+    "targetId": "tx_xxxx",
+    "reason": "Dibatalkan oleh pengguna"
   }
 }
 \`\`\`
