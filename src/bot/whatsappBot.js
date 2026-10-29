@@ -219,6 +219,19 @@ export class WhatsAppBot {
       return;
     }
 
+    const isRefreshRecap = /(perbarui|update|refresh|sinkron|sync)\s*(rekap|dashboard|sps|spreadsheet)/i.test(cleanLower);
+    if (isRefreshRecap && this.googleSheetsService) {
+      console.log('[WhatsAppBot] 📊 Diagnostic command triggered: Perbarui Rekap Spreadsheet');
+      await this.sendMessageWithTyping(chatJid, '⏳ *Sedang memperbarui Rekap Mingguan & Bulanan di Google Spreadsheet...*', msg);
+      const refreshResult = await this.googleSheetsService.refreshRecap();
+      if (refreshResult.success) {
+        await this.sendMessageWithTyping(chatJid, '✅ *Tab "Rekap Bulanan" dan "Rekap Mingguan" di Google Spreadsheet BERHASIL Diperbarui!*\n\nSilakan buka spreadsheet Anda untuk melihat ringkasan keuangan terbaru.', msg);
+      } else {
+        await this.sendMessageWithTyping(chatJid, `⚠️ *Gagal memperbarui rekap:* ${refreshResult.error || refreshResult.reason}\n\nPastikan kode Apps Script terbaru sudah dipasang di spreadsheet Anda.`, msg);
+      }
+      return;
+    }
+
     console.log(`[WhatsAppBot] 💬 Processing message from ${speakerInfo.name} (${speakerInfo.role}) in ${isGroup ? 'Group' : 'Private'}: "${text || '[Media]'}"`);
 
     // Generate AI Response
@@ -313,8 +326,8 @@ export class WhatsAppBot {
     }
 
     // 5. Check if parent/owner asks for specific life partner utilities in group:
-    // (e.g. tanya jadwal salat, minta evaluasi, tanya keuangan bersama, minta saran)
-    const utilityKeywords = /(jadwal salat|waktu salat|evaluasi|catat|pengeluaran|pemasukan|keuangan|saran|pendapat kamu|menurut kamu|target kita)/i;
+    // (e.g. tanya jadwal salat, minta evaluasi, tanya keuangan bersama, minta saran, rekap mingguan/bulanan)
+    const utilityKeywords = /(jadwal salat|waktu salat|evaluasi|rekap|ringkasan|catat|pengeluaran|pemasukan|keuangan|saran|pendapat kamu|menurut kamu|target kita)/i;
     if (utilityKeywords.test(lowerText)) {
       console.log(`[WhatsAppBot] 🎯 Triggered by UTILITY KEYWORD: "${cleanText}"`);
       return true;

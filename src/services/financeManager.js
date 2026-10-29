@@ -193,6 +193,95 @@ ${recentTxList}
 `.trim();
   }
 
+  getWeeklyRecap(owner = 'owner') {
+    const now = getNow();
+    const day = now.day();
+    const diffToMonday = (day === 0 ? -6 : 1) - day;
+    const monday = now.add(diffToMonday, 'day').startOf('day');
+    const sunday = monday.add(6, 'day').endOf('day');
+
+    const weekTxs = this.data.transactions.filter(t => {
+      const d = dayjs(t.date);
+      return (d.isAfter(monday) || d.isSame(monday)) && (d.isBefore(sunday) || d.isSame(sunday)) && (!owner || t.owner === owner);
+    });
+
+    const income = weekTxs.filter(t => t.type === 'income').reduce((acc, c) => acc + c.amount, 0);
+    const expense = weekTxs.filter(t => t.type === 'expense').reduce((acc, c) => acc + c.amount, 0);
+    const net = income - expense;
+    const dailyAvg = Math.round(expense / 7);
+
+    const catMap = {};
+    weekTxs.filter(t => t.type === 'expense').forEach(t => {
+      const cat = t.category || 'Umum';
+      catMap[cat] = (catMap[cat] || 0) + t.amount;
+    });
+
+    const sortedCats = Object.entries(catMap).sort((a, b) => b[1] - a[1]);
+    const topCatStr = sortedCats.length > 0
+      ? sortedCats.slice(0, 3).map(([c, amt]) => `${c}: ${formatRupiah(amt)}`).join(', ')
+      : 'Belum ada pengeluaran';
+
+    return {
+      periodLabel: `${monday.format('DD MMM')} - ${sunday.format('DD MMM YYYY')}`,
+      income,
+      expense,
+      net,
+      dailyAvg,
+      topCategories: sortedCats,
+      summaryText: `📅 *REKAP MINGGUAN (${monday.format('DD MMM')} - ${sunday.format('DD MMM YYYY')})*\n\n` +
+        `• *Pemasukan:* ${formatRupiah(income)}\n` +
+        `• *Pengeluaran:* ${formatRupiah(expense)}\n` +
+        `• *Net Cashflow:* ${formatRupiah(net)} (${net >= 0 ? 'Surplus ✅' : 'Defisit ⚠️'})\n` +
+        `• *Rata-rata Pengeluaran/Hari:* ${formatRupiah(dailyAvg)}\n` +
+        `• *Kategori Terbesar:* ${topCatStr}\n\n` +
+        `📊 *Status:* Rincian lengkap juga tersinkronisasi di tab *Rekap Mingguan* pada Google Spreadsheet Anda.`
+    };
+  }
+
+  getMonthlyRecap(owner = 'owner') {
+    const now = getNow();
+    const currentMonthKey = now.format('YYYY-MM');
+    const monthLabel = now.format('MMMM YYYY');
+
+    const monthTxs = this.data.transactions.filter(t => {
+      return t.date.startsWith(currentMonthKey) && (!owner || t.owner === owner);
+    });
+
+    const income = monthTxs.filter(t => t.type === 'income').reduce((acc, c) => acc + c.amount, 0);
+    const expense = monthTxs.filter(t => t.type === 'expense').reduce((acc, c) => acc + c.amount, 0);
+    const savings = monthTxs.filter(t => t.type === 'savings' || t.type === 'emergency').reduce((acc, c) => acc + c.amount, 0);
+    const net = income - expense;
+    const savingsRatio = income > 0 ? ((savings / income) * 100).toFixed(1) + '%' : '0%';
+
+    const catMap = {};
+    monthTxs.filter(t => t.type === 'expense').forEach(t => {
+      const cat = t.category || 'Umum';
+      catMap[cat] = (catMap[cat] || 0) + t.amount;
+    });
+
+    const sortedCats = Object.entries(catMap).sort((a, b) => b[1] - a[1]);
+    const topCatStr = sortedCats.length > 0
+      ? sortedCats.slice(0, 3).map(([c, amt]) => `${c}: ${formatRupiah(amt)}`).join(', ')
+      : 'Belum ada pengeluaran';
+
+    return {
+      monthLabel,
+      income,
+      expense,
+      savings,
+      net,
+      savingsRatio,
+      topCategories: sortedCats,
+      summaryText: `🗓️ *REKAP BULANAN (${monthLabel})*\n\n` +
+        `• *Total Pemasukan:* ${formatRupiah(income)}\n` +
+        `• *Total Pengeluaran:* ${formatRupiah(expense)}\n` +
+        `• *Tabungan Disimpan:* ${formatRupiah(savings)} (Rasio: ${savingsRatio})\n` +
+        `• *Net Cashflow (Sisa):* ${formatRupiah(net)} (${net >= 0 ? 'Surplus ✅' : 'Defisit ⚠️'})\n` +
+        `• *Top Kategori Pengeluaran:* ${topCatStr}\n\n` +
+        `📊 *Status:* Rincian lengkap juga tersinkronisasi di tab *Rekap Bulanan* pada Google Spreadsheet Anda.`
+    };
+  }
+
   getDefaultData() {
     return {
       balances: {

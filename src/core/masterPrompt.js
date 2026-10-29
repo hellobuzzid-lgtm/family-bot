@@ -16,6 +16,8 @@ export class MasterPromptBuilder {
 
     // 1. Database Truth: Finances
     const financialSummary = this.financeManager.getFinancialSummary(isOwner ? 'owner' : 'partner');
+    const weeklyRecap = this.financeManager.getWeeklyRecap ? this.financeManager.getWeeklyRecap(isOwner ? 'owner' : 'partner') : null;
+    const monthlyRecap = this.financeManager.getMonthlyRecap ? this.financeManager.getMonthlyRecap(isOwner ? 'owner' : 'partner') : null;
 
     // 2. Database Truth: Active Goals
     const activeGoals = this.goalTracker.getActiveGoalsSummary(isOwner ? 'owner' : 'partner');
@@ -156,6 +158,8 @@ Gunakan data berikut sebagai fakta mutlak sistem:
 
 ### 💰 KONDISI KEUANGAN SISTEM:
 ${financialSummary}
+${weeklyRecap ? `\n• Rangkuman Minggu Ini (${weeklyRecap.periodLabel}):\n  Pemasukan: Rp ${weeklyRecap.income.toLocaleString('id-ID')} | Pengeluaran: Rp ${weeklyRecap.expense.toLocaleString('id-ID')} | Net: Rp ${weeklyRecap.net.toLocaleString('id-ID')} | Rata-rata/hari: Rp ${weeklyRecap.dailyAvg.toLocaleString('id-ID')}` : ''}
+${monthlyRecap ? `\n• Rangkuman Bulan Ini (${monthlyRecap.monthLabel}):\n  Pemasukan: Rp ${monthlyRecap.income.toLocaleString('id-ID')} | Pengeluaran: Rp ${monthlyRecap.expense.toLocaleString('id-ID')} | Net: Rp ${monthlyRecap.net.toLocaleString('id-ID')} | Tabungan: Rp ${monthlyRecap.savings.toLocaleString('id-ID')} (${monthlyRecap.savingsRatio})` : ''}
 
 ### 🎯 TARGET & AKUNTABILITAS AKTIF:
 ${activeGoals}

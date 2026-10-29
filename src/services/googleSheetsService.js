@@ -102,6 +102,20 @@ export class GoogleSheetsService {
   }
 
   /**
+   * Trigger manual refresh of weekly & monthly recap sheets in Google Spreadsheet
+   */
+  async refreshRecap() {
+    if (!this.isConfigured()) return { success: false, reason: 'NOT_CONFIGURED' };
+
+    const payload = {
+      action: 'REFRESH_RECAP',
+      timestamp: getNow().format('YYYY-MM-DD HH:mm:ss')
+    };
+
+    return this.sendPayload(payload);
+  }
+
+  /**
    * Live test connection for WhatsApp diagnostic
    */
   async testConnection() {

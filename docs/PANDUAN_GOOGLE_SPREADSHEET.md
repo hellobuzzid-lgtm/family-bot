@@ -1,60 +1,71 @@
-# 📊 Panduan Menghubungkan Bot NEX ke Google Spreadsheet
+# 📊 Panduan Integrasi Google Spreadsheet Bot NEX (Termasuk Rekap Mingguan & Bulanan)
 
-Dengan integrasi ini, setiap kali Anda atau pasangan meminta **NEX** mencatat pengeluaran, pemasukan, atau rutinitas di WhatsApp, data akan **otomatis terupdate ke Google Spreadsheet secara real-time**!
-
----
-
-## ⚡ Langkah Mudah Pemasangan (Hanya 1 Menit)
-
-### 1. Buat Google Spreadsheet Baru
-1. Buka browser dan kunjungi [sheets.new](https://sheets.new) (atau buat spreadsheet baru di Google Drive).
-2. Beri nama file spreadsheet Anda, misalnya: **`Catatan Keuangan & Rutinitas NEX`**.
-
-### 2. Buka Apps Script
-1. Pada menu atas Google Sheets, klik **Ekstensi** (*Extensions*) > **Apps Script**.
-2. Hapus seluruh isi kode bawaan yang ada di editor.
-
-### 3. Salin & Tempel Kode Script
-1. Salin seluruh kode yang ada di file [`docs/google-apps-script.js`](./google-apps-script.js) (atau dari chat ini).
-2. Tempel (*paste*) ke dalam editor Apps Script.
-3. Klik tombol **Simpan** (ikon disket / `Ctrl + S`).
-
-### 4. Terapkan sebagai Aplikasi Web (Deploy as Web App)
-1. Di pojok kanan atas, klik tombol biru **Terapkan** (*Deploy*) > **Penerapan baru** (*New deployment*).
-2. Klik ikon gerigi di sebelah kiri (*Select type*), lalu pilih **Aplikasi web** (*Web app*).
-3. Isi kolom pengaturan berikut:
-   - **Deskripsi**: `NEX Bot Webhook`
-   - **Jalankan sebagai** (*Execute as*): **Saya** (*Me / email Anda*)
-   - **Siapa yang memiliki akses** (*Who has access*): **Siapa saja** (*Anyone*) ⚠️ *(Penting: pilih "Anyone" agar bot di Railway bisa mengirim data tanpa login akun Google)*.
-4. Klik tombol **Terapkan** (*Deploy*).
-5. Jika muncul jendela permintaan izin:
-   - Klik **Tinjau Izin** (*Review permissions*).
-   - Pilih akun Google Anda.
-   - Klik **Lanjutan** (*Advanced*) > Klik **Buka (tidak aman)** (*Go to project*).
-   - Klik **Izinkan** (*Allow*).
-6. Salin **URL Aplikasi Web** yang muncul (URL berakhiran `/exec`).
-   *Contoh format*: `https://script.google.com/macros/s/AKfycbx.../exec`
+Dengan integrasi ini, setiap kali Anda atau pasangan meminta **NEX** mencatat pengeluaran, pemasukan, atau rutinitas di WhatsApp, data akan **otomatis terupdate ke Google Spreadsheet secara real-time** lengkap dengan **Rekap Mingguan** dan **Rekap Bulanan**!
 
 ---
 
-### 5. Masukkan ke Railway / File `.env`
-Buka proyek Anda di **Railway** (atau file `.env` jika dijalankan di server lokal):
-1. Masuk ke menu **Variables**.
-2. Tambahkan variable:
-   - **`GOOGLE_SHEET_WEBHOOK_URL`**: Tempelkan URL `/exec` yang tadi Anda salin.
-   - **`GOOGLE_SHEET_URL`** *(opsional)*: Tempelkan link Google Spreadsheet Anda agar NEX bisa membagikan link saat ditanya.
-3. Railway akan otomatis me-restart bot Anda dalam hitungan detik.
+## 📑 Struktur Lembar Kerja (Tabs) yang Dihasilkan Otomatis
 
----
+Google Spreadsheet Anda akan otomatis memiliki 5 lembar kerja profesional:
 
-## 🎉 Hasil Otomatisasi di Google Spreadsheet
-
-Google Spreadsheet Anda akan otomatis memiliki 3 lembar kerja rapi dengan warna elegan:
-1. **Transaksi Keuangan** (Hijau):
+1. 🟢 **`Transaksi Keuangan`** (Buku Kas Mentah):
    - Kolom: `Timestamp | Tanggal | Waktu | Jenis | Nominal (Rp) | Kategori | Keterangan | Akun (Pribadi/Bisnis) | Pencatat | ID Transaksi`
-   - Nominal sudah otomatis terformat Rupiah (`Rp 50.000`).
-   - Warna teks otomatis hijau untuk Pemasukan dan merah untuk Pengeluaran.
-2. **Rutinitas & Kebiasaan** (Biru):
+   - Nominal otomatis diformat Rupiah (`Rp 50.000`).
+   - Warna teks hijau untuk Pemasukan dan merah untuk Pengeluaran.
+
+2. 📅 **`Rekap Bulanan`** (Dashboard Keuangan Bulanan):
+   - **Kartu Ringkasan (KPI Cards)**: Total Pemasukan, Total Pengeluaran, Total Tabungan, dan Net Cashflow (Surplus/Defisit).
+   - **Tabel Kinerja Bulanan**:
+     - `Bulan | Pemasukan (Rp) | Pengeluaran (Rp) | Net Cashflow (Rp) | Tabungan (Rp) | Rasio Tabungan (%) | Status Arus Kas`
+     - Evaluasi otomatis status cashflow (`SURPLUS ✅`, `DEFISIT ⚠️`, `SEIMBANG ⚖️`).
+     - Baris Total Keseluruhan di bagian bawah.
+
+3. 📆 **`Rekap Mingguan`** (Evaluasi Ritme Mingguan):
+   - **Kartu Ringkasan Minggu Berjalan**: Pemasukan minggu ini, pengeluaran minggu ini, sisa saldo mingguan, dan rata-rata pengeluaran/hari.
+   - **Tabel Kinerja Mingguan (Senin s/d Minggu)**:
+     - `Periode Minggu | Pemasukan (Rp) | Pengeluaran (Rp) | Net Mingguan (Rp) | Rata-rata / Hari | Status Evaluasi | Top Kategori Pengeluaran`
+     - Evaluasi disiplin anggaran (`HEMAT 🟢`, `TERKENDALI 🟡`, `WASPADA 🔴`).
+     - Deteksi otomatis kategori pengeluaran terbesar per minggu.
+
+4. 🔵 **`Rutinitas & Kebiasaan`**:
    - Kolom: `Timestamp | Tanggal | Waktu | Aktivitas / Habit | Nilai / Status | Catatan`
-3. **Target & Evaluasi** (Oranye):
+
+5. 🟠 **`Target & Evaluasi`**:
    - Kolom: `Timestamp | Kategori | Judul Target | Tolok Ukur | Target Tanggal | Pemilik`
+
+---
+
+## ⚡ Cara Memperbarui Kode di Apps Script (Hanya 1 Menit)
+
+Jika Anda sudah pernah memasang skrip sebelumnya, lakukan langkah mudah ini untuk mengaktifkan tab **Rekap Bulanan & Mingguan**:
+
+1. Buka spreadsheet Anda di Google Drive.
+2. Klik menu: **Ekstensi** (*Extensions*) > **Apps Script**.
+3. Hapus seluruh kode yang ada di editor, lalu **Paste seluruh kode dari file [`docs/google-apps-script.js`](./google-apps-script.js)**.
+4. Klik icon **Simpan** (ikon disket / `Ctrl + S`).
+5. Perbarui Penerapan (*Deploy*):
+   - Klik tombol biru di kanan atas: **Terapkan** (*Deploy*) > **Kelola penerapan** (*Manage deployments*).
+   - Klik ikon **Pensil** (Edit) di samping nama deployment Anda.
+   - Pada dropdown **Versi** (*Version*), pilih **Versi baru** (*New version*).
+   - Klik tombol **Terapkan** (*Deploy*).
+6. Selesai! URL webhook Anda tetap sama, tidak perlu mengubah apa pun di Railway.
+
+---
+
+## 🖱️ Menu Praktis Langsung di Spreadsheet Anda
+
+Setelah memasang kode terbaru, ketika Anda membuka Google Spreadsheet di browser komputer, akan muncul menu baru di bilah menu atas:
+👉 **`🤖 NEX Bot`**
+- **`🔄 Perbarui Rekap Mingguan & Bulanan`**: Klik ini kapan saja untuk menyegarkan rekap instan.
+- **`📅 Buka Tab Rekap Bulanan`**: Langsung melompat ke dashboard bulanan.
+- **`📆 Buka Tab Rekap Mingguan`**: Langsung melompat ke dashboard mingguan.
+
+---
+
+## 💬 Cara Meminta Rekap dari WhatsApp
+
+Anda juga bisa meminta rekap langsung ke bot NEX di WhatsApp:
+- `nex rekap mingguan`
+- `nex rekap bulanan`
+- `nex evaluasi keuangan bulan ini`
+- `nex sync rekap` (untuk memicu update paksa ke spreadsheet)
