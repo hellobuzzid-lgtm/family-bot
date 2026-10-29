@@ -158,24 +158,59 @@ export class GeminiService {
     const clean = text.toLowerCase().trim();
 
     // 1. Check if user is asking to CORRECT a previous transaction
-    const isCorrectionIntent = /(^|\s|[^a-zA-Z0-9])(salah|ralat|seharusnya|koreksi|ubah|ganti|bukan\s*(pemasukan|pengeluaran|tabungan|utang)|salah\s*(catat|ketik|masuk)|revisi)($|\s|[^a-zA-Z0-9])/i.test(clean);
+    const isCorrectionIntent = /(?:^|\s|[^a-zA-Z0-9])(?:salah|(?:di|meng)?koreksi|(?:di|me)?ralat|(?:di|meng)?ubah|(?:di|meng)?ganti|(?:di)?revisi|seharusnya|harusnya|mestinya|bukan\s*(?:pemasukan|pengeluaran|tabungan|utang)|(?:jadi|menjadi)\s*(?:pengeluaran|pemasukan))(?:$|\s|[^a-zA-Z0-9])/i.test(clean);
     
     // 2. Check if user is asking to CANCEL/DELETE a transaction
-    const isDeletionIntent = /(^|\s|[^a-zA-Z0-9])(hapus|batal|batalkan|delete|cancel|buang)\s*(transaksi|pencatatan|pengeluaran|pemasukan|tadi|kemarin)?/i.test(clean);
+    const isDeletionIntent = /(?:^|\s|[^a-zA-Z0-9])(?:hapus|batal|batalkan|delete|cancel|buang)\s*(?:transaksi|pencatatan|pengeluaran|pemasukan|tadi|kemarin)?(?:$|\s|[^a-zA-Z0-9])/i.test(clean);
 
     if (isCorrectionIntent) {
       console.log(`[GeminiService] 🔍 Detected CORRECTION intent: "${text}"`);
 
       // Determine target updates
+      const wantsExpense = /(?:jadi|ubah\s*(?:ke|menjadi)?|seharusnya|mestinya|koreksi\s*(?:jadi|ke)?)\s*pengeluaran|bukan\s*pemasukan/i.test(clean);
+      const wantsIncome = /(?:jadi|ubah\s*(?:ke|menjadi)?|seharusnya|mestinya|koreksi\s*(?:jadi|ke)?)\s*pemasukan|bukan\s*pengeluaran/i.test(clean);
       const isExpense = /(pengeluaran|beli|bayar|keluar|belanja|biaya)/i.test(clean);
       const isIncome = /(pemasukan|masuk|gaji|terima|dapat|omzet|cair)/i.test(clean);
       const amountMatch = clean.match(/(?:rp\.?\s*)?(\d+(?:[.,]\d+)?\s*(?:jt|juta|rb|ribu|k)?|\d{4,})/i);
       const parsedAmount = amountMatch ? parseAmount(amountMatch[0]) : null;
 
       const updates = {};
-      if (isExpense && !clean.includes('bukan pengeluaran')) updates.type = 'expense';
-      if (isIncome && !clean.includes('bukan pemasukan')) updates.type = 'income';
+      if (wantsExpense) {
+        updates.type = 'expense';
+      } else if (wantsIncome) {
+        updates.type = 'income';
+      } else if (isExpense && !clean.includes('bukan pengeluaran')) {
+        updates.type = 'expense';
+      } else if (isIncome && !clean.includes('bukan pemasukan')) {
+        updates.type = 'income';
+      }
+
       if (parsedAmount && parsedAmount > 0) updates.amount = parsedAmount;
+
+      // Extract new description if provided
+      let cleanDesc = text
+        .replace(/\b(?:nex|bot|partner|tolong|bantu|coba|dong|ya|please)\b/gi, '')
+        .replace(/\b(?:salah|ralat|seharusnya|harusnya|mestinya|(?:di|meng)?koreksi|(?:di|me)?ralat|(?:di|meng)?ubah|(?:di|meng)?ganti|(?:di)?revisi)\b/gi, '')
+        .replace(/\bbukan\s*(?:pemasukan|pengeluaran|tabungan|utang)\b/gi, '')
+        .replace(/\b(?:jadi|menjadi)\s*(?:pengeluaran|pemasukan)\b/gi, '')
+        .replace(/\b(?:pemasukan|pengeluaran|sebesar|senilai)\b/gi, '')
+        .replace(/(?:rp\.?\s*)?(\d+(?:[.,]\d+)?\s*(?:jt|juta|rb|ribu|k)?|\d{4,})/gi, '')
+        .replace(/\s+/g, ' ')
+        .trim();
+
+      if (cleanDesc && cleanDesc.length >= 2) {
+        updates.description = cleanDesc.charAt(0).toUpperCase() + cleanDesc.slice(1);
+        const lowerDesc = cleanDesc.toLowerCase();
+        if (/ayam|makan|minum|kopi|resto|nasi|mie|sarapan|lunch|dinner|jajan|snack|bakso/i.test(lowerDesc)) {
+          updates.category = 'Makanan';
+        } else if (/bensin|parkir|tol|gojek|grab|ojek|transport/i.test(lowerDesc)) {
+          updates.category = 'Transportasi';
+        } else if (/listrik|air|wifi|pulsa|paket\s*data|iuran/i.test(lowerDesc)) {
+          updates.category = 'Tagihan & Utilitas';
+        } else if (/belanja|baju|sepatu|tas|shopee|tokopedia/i.test(lowerDesc)) {
+          updates.category = 'Belanja';
+        }
+      }
 
       const owner = speakerInfo.role === 'partner' ? 'partner' : 'owner';
       const matchResult = this.financeManager.findTransactionForCorrection({

@@ -46,8 +46,9 @@ function doPost(e) {
     if (data.action === 'TRANSACTION' || data.action === 'UPDATE_TRANSACTION' || data.action === 'CORRECT_TRANSACTION') {
       var sheet = getOrCreateSheet(ss, 'Transaksi Keuangan', txHeaders, '#1B5E20');
       var tx = data.transaction || {};
+      var isUpdateAction = (data.action === 'UPDATE_TRANSACTION' || data.action === 'CORRECT_TRANSACTION');
 
-      updateOrAppendTxRow(sheet, tx);
+      updateOrAppendTxRow(sheet, tx, isUpdateAction);
 
       try { updateRecapSheets(ss); } catch (recapErr) { console.warn('Gagal update rekap:', recapErr.message); }
 
@@ -157,16 +158,46 @@ function doGet(e) {
 // =========================================================================
 // HELPER TRANSAKSI: UPDATE IN-PLACE ATAU APPEND
 // =========================================================================
-function updateOrAppendTxRow(sheet, tx) {
+function updateOrAppendTxRow(sheet, tx, isExplicitUpdate) {
   var lastRow = sheet.getLastRow();
   var foundRow = -1;
 
+  // 1. Cari berdasarkan ID Transaksi di Kolom 10
   if (lastRow > 1 && tx.id) {
     var ids = sheet.getRange(2, 10, lastRow - 1, 1).getValues();
-    for (var i = 0; i < ids.length; i++) {
+    for (var i = ids.length - 1; i >= 0; i--) {
       if (ids[i][0] === tx.id) {
         foundRow = i + 2;
         break;
+      }
+    }
+  }
+
+  // 2. Fallback untuk data lama (jika kolom 10 belum ada ID dan ini adalah aksi koreksi)
+  if (foundRow === -1 && lastRow > 1 && isExplicitUpdate) {
+    var searchLimit = Math.min(lastRow - 1, 30);
+    var startRow = lastRow - searchLimit + 1;
+    var rows = sheet.getRange(startRow, 1, searchLimit, 10).getValues();
+
+    for (var r = rows.length - 1; r >= 0; r--) {
+      var row = rows[r];
+      var rJenis = String(row[3] || '').toLowerCase();
+      var rAmt = (typeof row[4] === 'number') ? row[4] : (parseFloat(String(row[4] || '').replace(/[^0-9.-]+/g, '')) || 0);
+      var rId = String(row[9] || '').trim();
+
+      if (tx.previous) {
+        var prevType = (tx.previous.type === 'income' ? 'pemasukan' : 'pengeluaran');
+        var prevAmt = Number(tx.previous.amount) || 0;
+        if (rJenis.includes(prevType) && Math.abs(rAmt - prevAmt) < 1) {
+          foundRow = startRow + r;
+          break;
+        }
+      } else if (!rId) {
+        var targetAmt = Number(tx.amount) || 0;
+        if (Math.abs(rAmt - targetAmt) < 1) {
+          foundRow = startRow + r;
+          break;
+        }
       }
     }
   }

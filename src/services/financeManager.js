@@ -284,27 +284,55 @@ export class FinanceManager {
     const cleanText = (text || '').toLowerCase();
     const parsedAmt = amount ? parseAmount(amount) : parseAmount(cleanText);
 
+    // Target type intent from user text:
+    const wantsExpense = /(?:jadi|ubah\s*(?:ke|menjadi)?|seharusnya|mestinya|koreksi\s*(?:jadi|ke)?)\s*pengeluaran|bukan\s*pemasukan/i.test(cleanText);
+    const wantsIncome = /(?:jadi|ubah\s*(?:ke|menjadi)?|seharusnya|mestinya|koreksi\s*(?:jadi|ke)?)\s*pemasukan|bukan\s*pengeluaran/i.test(cleanText);
+
     // Filter by recent active transactions (last 30 transactions)
     const recentCandidates = activeTxs
       .filter(t => !owner || t.owner === owner)
       .slice(0, 30);
 
+    const now = getNow();
+
     const scored = recentCandidates.map((tx, idx) => {
       let score = 0;
       const txDesc = (tx.description || '').toLowerCase();
       const txCat = (tx.category || '').toLowerCase();
+      const diffMinutes = Math.abs(now.diff(dayjs(tx.date), 'minute'));
 
-      // Recency bias (0 to 20 points)
-      score += Math.max(0, 20 - idx);
+      // 1. Time proximity (huge boost for recently created transactions)
+      if (diffMinutes <= 5) {
+        score += 65;
+      } else if (diffMinutes <= 15) {
+        score += 45;
+      } else if (diffMinutes <= 60) {
+        score += 30;
+      } else if (diffMinutes <= 1440) {
+        score += 15;
+      } else {
+        score += Math.max(0, 10 - idx);
+      }
 
-      // Amount match (+40 points)
+      // 2. Amount match (+40 points)
       if (parsedAmt && parsedAmt > 0 && tx.amount === parsedAmt) {
         score += 40;
       }
 
-      // Keyword match with description or category
+      // 3. Target type correlation:
+      // If user says "jadi pengeluaran", prefer transactions that are currently 'income' (+40)
+      // and penalize transactions that are already 'expense' (-35).
+      if (wantsExpense) {
+        if (tx.type === 'income') score += 40;
+        else if (tx.type === 'expense') score -= 35;
+      } else if (wantsIncome) {
+        if (tx.type === 'expense') score += 40;
+        else if (tx.type === 'income') score -= 35;
+      }
+
+      // 4. Keyword match with description or category
       const words = cleanText
-        .replace(/(salah|ralat|seharusnya|koreksi|ubah|ganti|bukan|pemasukan|pengeluaran|tabungan|nominal|jadi|sebesar|senilai|kemarin|tadi|dong|nex|bot|bro|ya)/g, '')
+        .replace(/\b(?:salah|ralat|seharusnya|harusnya|mestinya|(?:di|meng)?koreksi|(?:di|me)?ralat|(?:di|meng)?ubah|(?:di|meng)?ganti|(?:di)?revisi|bukan|pemasukan|pengeluaran|tabungan|nominal|jadi|sebesar|senilai|kemarin|tadi|dong|nex|bot|bro|ya|tolong|beli|bayar)\b/gi, '')
         .split(/\s+/)
         .filter(w => w.length >= 3);
 
@@ -316,11 +344,7 @@ export class FinanceManager {
       }
       score += wordMatches * 15;
 
-      // User says "bukan pemasukan" -> boosts transactions that are currently 'income'
-      if (cleanText.includes('bukan pemasukan') && tx.type === 'income') score += 25;
-      if (cleanText.includes('bukan pengeluaran') && tx.type === 'expense') score += 25;
-
-      return { tx, score };
+      return { tx, score, diffMinutes };
     });
 
     scored.sort((a, b) => b.score - a.score);
@@ -328,10 +352,10 @@ export class FinanceManager {
     const top = scored[0];
     if (!top || top.score < 25) {
       // Fallback: If user simply says "salah, seharusnya pengeluaran 50rb" right after recording,
-      // and only 1 transaction was recorded in the last 5 minutes:
+      // and only 1 transaction was recorded in the last 10 minutes:
       const lastTx = recentCandidates[0];
       if (lastTx) {
-        const diffMinutes = Math.abs(getNow().diff(dayjs(lastTx.date), 'minute'));
+        const diffMinutes = Math.abs(now.diff(dayjs(lastTx.date), 'minute'));
         if (diffMinutes <= 10) {
           return { status: 'found', transaction: lastTx };
         }
@@ -340,12 +364,16 @@ export class FinanceManager {
     }
 
     const runnerUp = scored[1];
-    // Check ambiguity: If runner up has very close score (within 5 points) and >= 40 score
-    if (runnerUp && runnerUp.score >= 40 && (top.score - runnerUp.score) <= 5 && runnerUp.tx.id !== top.tx.id) {
-      return {
-        status: 'ambiguous',
-        candidates: scored.filter(s => s.score >= top.score - 5).map(s => s.tx)
-      };
+    // Check ambiguity: Only ambiguous if scores are very close AND top isn't overwhelmingly recent
+    if (runnerUp && runnerUp.tx.id !== top.tx.id) {
+      const scoreDiff = top.score - runnerUp.score;
+      const topIsVeryRecent = top.diffMinutes <= 10 && runnerUp.diffMinutes > 30;
+      if (!topIsVeryRecent && runnerUp.score >= 25 && scoreDiff <= 5) {
+        return {
+          status: 'ambiguous',
+          candidates: scored.filter(s => s.score >= top.score - 5).map(s => s.tx)
+        };
+      }
     }
 
     return { status: 'found', transaction: top.tx };
@@ -418,7 +446,7 @@ export class FinanceManager {
 
     // Sync to Google Sheets
     if (this.googleSheetsService) {
-      this.googleSheetsService.updateTransaction(tx).catch(err => {
+      this.googleSheetsService.updateTransaction(tx, previousSnapshot).catch(err => {
         console.warn('[FinanceManager] Failed to sync updated tx to Google Sheets:', err.message);
       });
     }

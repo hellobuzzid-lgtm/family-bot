@@ -2,6 +2,7 @@ import assert from 'assert';
 import fs from 'fs';
 import path from 'path';
 import { FinanceManager } from '../src/services/financeManager.js';
+import { GeminiService } from '../src/services/geminiService.js';
 import { formatRupiah } from '../src/utils/formatters.js';
 
 console.log('================================================================');
@@ -201,6 +202,30 @@ assert.strictEqual(typeof auditReport.reconciledBalances.personalBalance, 'numbe
 console.log('1. Laporan Audit:', auditReport);
 console.log('✅ AUDIT & REKONSILIASI BERHASIL\n');
 
+console.log('--- TEST KASUS NYATA: "Pemasukan Rp50.000" dikoreksi "dikoreksi jadi Pengeluaran beli ayam Rp50000" ---');
+const txUserIncome = fm.recordTransaction({
+  type: 'income',
+  amount: 50000,
+  category: 'Pemasukan',
+  description: 'Pemasukan Rp50.000',
+  owner: 'owner'
+});
+
+const geminiService = new GeminiService(null, null, fm, null, null);
+geminiService.checkAndFallbackParseTransaction(
+  'dikoreksi jadi Pengeluaran beli ayam Rp50000',
+  { role: 'owner' }
+);
+
+const txUserUpdated = fm.data.transactions.find(t => t.id === txUserIncome.transaction.id);
+assert.strictEqual(txUserUpdated.type, 'expense', 'Jenis transaksi harus berubah dari income menjadi expense');
+assert.strictEqual(txUserUpdated.amount, 50000, 'Nominal harus tetap 50000');
+assert.strictEqual(txUserUpdated.description, 'Beli ayam', 'Keterangan harus diperbarui menjadi Beli ayam');
+assert.strictEqual(txUserUpdated.category, 'Makanan', 'Kategori harus otomatis menjadi Makanan');
+assert.strictEqual(txUserUpdated.correctionHistory.length >= 1, true, 'Riwayat koreksi harus tercatat');
+console.log('1. Berhasil dikoreksi in-place:', txUserUpdated.id, txUserUpdated.type, txUserUpdated.amount, txUserUpdated.description, txUserUpdated.category);
+console.log('✅ TEST KASUS NYATA PENGGUNA BERHASIL LULUS\n');
+
 console.log('================================================================');
-console.log('🎉 SELURUH SKENARIO PENGUJIAN (KASUS A - F) LULUS 100%! 🎉');
+console.log('🎉 SELURUH SKENARIO PENGUJIAN (KASUS A - F + KASUS NYATA) LULUS 100%! 🎉');
 console.log('================================================================');

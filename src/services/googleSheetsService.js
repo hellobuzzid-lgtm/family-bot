@@ -60,7 +60,7 @@ export class GoogleSheetsService {
   /**
    * Update existing transaction in Google Sheets by ID
    */
-  async updateTransaction(transaction) {
+  async updateTransaction(transaction, previous = null) {
     if (!this.isConfigured()) return { success: false, reason: 'NOT_CONFIGURED' };
 
     const payload = {
@@ -74,7 +74,8 @@ export class GoogleSheetsService {
         category: transaction.category || 'Umum',
         description: transaction.description || '',
         isBusiness: Boolean(transaction.isBusiness),
-        owner: transaction.owner || 'owner'
+        owner: transaction.owner || 'owner',
+        previous: previous || null
       }
     };
 
@@ -254,6 +255,16 @@ export class GoogleSheetsService {
         } catch (_) {
           resJson = { status: 'success', raw: resText };
         }
+
+        if (resJson && resJson.status === 'ignored') {
+          console.warn(`⚠️ [GoogleSheetsService] Webhook Google Apps Script mengabaikan aksi [${payload.action}]. Hal ini terjadi jika deployment web app di Google Apps Script belum diperbarui ke versi baru.`);
+          return {
+            success: false,
+            reason: 'WEBHOOK_IGNORED',
+            error: 'Google Apps Script belum diperbarui (action ignored). Pastikan kode Apps Script terbaru sudah di-Deploy sebagai "Versi baru".'
+          };
+        }
+
         console.log(`✅ [GoogleSheetsService] Data [${payload.action}] berhasil disinkronkan ke Google Spreadsheet.`);
         return { success: true, result: resJson };
       }

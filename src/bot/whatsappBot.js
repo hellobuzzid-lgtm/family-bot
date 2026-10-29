@@ -261,7 +261,7 @@ export class WhatsAppBot {
     }
 
     // Safety check: Ambiguity handling for corrections (Kasus F)
-    const isCorrectionIntent = /(^|\s|[^a-zA-Z0-9])(salah|ralat|seharusnya|koreksi|ubah|ganti|bukan\s*(pemasukan|pengeluaran|tabungan|utang)|salah\s*(catat|ketik|masuk)|revisi)($|\s|[^a-zA-Z0-9])/i.test(cleanLower);
+    const isCorrectionIntent = /(?:^|\s|[^a-zA-Z0-9])(?:salah|(?:di|meng)?koreksi|(?:di|me)?ralat|(?:di|meng)?ubah|(?:di|meng)?ganti|(?:di)?revisi|seharusnya|harusnya|mestinya|bukan\s*(?:pemasukan|pengeluaran|tabungan|utang)|(?:jadi|menjadi)\s*(?:pengeluaran|pemasukan))(?:$|\s|[^a-zA-Z0-9])/i.test(cleanLower);
     if (isCorrectionIntent && this.geminiService?.financeManager) {
       const match = this.geminiService.financeManager.findTransactionForCorrection({
         text,
