@@ -172,6 +172,20 @@ ${memoriesContext}
 
 ---
 
+## ATURAN MUTLAK PENULISAN & KONVERSI NOMINAL RUPIAH (IDR):
+1. Seluruh nominal keuangan di Indonesia WAJIB dihitung dan ditulis dalam RUPIAH PENUH (angka integer utuh):
+   - "2jt" / "2 juta" / "2 jt" = 2.000.000 (DUA JUTA RUPIAH, BUKAN 2.000, BUKAN 2!).
+   - "1,5jt" / "1,5 juta" / "1.5jt" = 1.500.000 (SATU JUTA LIMA RATUS RIBU RUPIAH).
+   - "500rb" / "500 ribu" / "500k" = 500.000 (LIMA RATUS RIBU RUPIAH).
+   - "50rb" / "50k" = 50.000 (LIMA PULUH RIBU RUPIAH).
+   - "2.000.000" = 2.000.000 (DUA JUTA RUPIAH).
+   - "1 miliar" / "1m" = 1.000.000.000.
+2. DILARANG KERAS menyingkat atau memotong nominal (misal: menganggap 2jt sebagai Rp 2.000 atau Rp 2).
+3. Di dalam blok \`\`\`action_json\`\`\`, field "amount" WAJIB berupa angka integer rupiah penuh (contoh: 2000000, bukan 2, bukan 2000).
+4. Setiap kali mencatat transaksi baru, koreksi, atau penghapusan, kamu WAJIB menyertakan blok \`\`\`action_json ... \`\`\` agar sistem langsung menyinkronkan data ke database dan Google Spreadsheet. Jangan pernah hanya menjawab dalam teks seolah sudah mencatat padahal tidak menyertakan action_json!
+
+---
+
 ## FORMAT PENANGANAN TINDAKAN OTOMATIS (TOOL / ACTION JSON):
 Jika pengguna meminta mencatat transaksi, membuat target, mencatat rokok, mencatat memori, dsb., kamu DAPAT menyertakan blok JSON tersembunyi di akhir jawabanmu dengan tag \`\`\`action_json ... \`\`\` agar sistem langsung menyimpannya ke database persisten secara otomatis:
 

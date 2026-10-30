@@ -368,7 +368,7 @@ export class FinanceManager {
     if (runnerUp && runnerUp.tx.id !== top.tx.id) {
       const scoreDiff = top.score - runnerUp.score;
       const topIsVeryRecent = top.diffMinutes <= 10 && runnerUp.diffMinutes > 30;
-      if (!topIsVeryRecent && runnerUp.score >= 25 && scoreDiff <= 5) {
+      if (!topIsVeryRecent && runnerUp.score >= 20 && scoreDiff <= 5) {
         return {
           status: 'ambiguous',
           candidates: scored.filter(s => s.score >= top.score - 5).map(s => s.tx)
@@ -687,13 +687,33 @@ ${recentTxList}
     };
   }
 
-  addDebt({ creditor, totalAmount, monthlyInstallment = 0, dueDate = '', notes = '' }) {
+  setInitialBalance({ personal = null, business = null, savings = null, emergency = null }) {
+    if (!this.data.initialBalances) {
+      this.data.initialBalances = {
+        personalBalance: 0,
+        businessBalance: 0,
+        savingsBalance: 0,
+        emergencyFundBalance: 0
+      };
+    }
+    if (personal !== null && personal !== undefined) this.data.initialBalances.personalBalance = parseAmount(personal);
+    if (business !== null && business !== undefined) this.data.initialBalances.businessBalance = parseAmount(business);
+    if (savings !== null && savings !== undefined) this.data.initialBalances.savingsBalance = parseAmount(savings);
+    if (emergency !== null && emergency !== undefined) this.data.initialBalances.emergencyFundBalance = parseAmount(emergency);
+
+    this.recalculateAllBalances();
+    this.saveData();
+    return this.data.initialBalances;
+  }
+
+  addDebt({ creditor, totalAmount, monthlyInstallment = 0, dueDate = '', notes = '', type = 'debt' }) {
     const total = parseAmount(totalAmount);
     const installment = parseAmount(monthlyInstallment);
 
     const newDebt = {
       id: `debt_${Date.now()}`,
       creditor: creditor.trim(),
+      type: type === 'receivable' ? 'receivable' : 'debt', // 'debt' (utang) | 'receivable' (piutang)
       totalAmount: total,
       remainingAmount: total,
       monthlyInstallment: installment,

@@ -226,6 +226,75 @@ assert.strictEqual(txUserUpdated.correctionHistory.length >= 1, true, 'Riwayat k
 console.log('1. Berhasil dikoreksi in-place:', txUserUpdated.id, txUserUpdated.type, txUserUpdated.amount, txUserUpdated.description, txUserUpdated.category);
 console.log('✅ TEST KASUS NYATA PENGGUNA BERHASIL LULUS\n');
 
+console.log('--- TEST AUDIT NOMINAL TRANSAKSI (TES 1 - 5 SESUAI INSTRUKSI) ---');
+import { parseAmount, extractAmount } from '../src/utils/formatters.js';
+
+// Tes 1: Input: 2 juta. Hasil: Rp2.000.000.
+const t1 = parseAmount('2 juta');
+assert.strictEqual(t1, 2000000, 'Tes 1 Gagal: 2 juta harus 2.000.000');
+console.log('✅ Tes 1: Input "2 juta" -> Hasil: Rp' + t1.toLocaleString('id-ID'));
+
+// Tes 2: Input: 2jt. Hasil: Rp2.000.000.
+const t2 = parseAmount('2jt');
+assert.strictEqual(t2, 2000000, 'Tes 2 Gagal: 2jt harus 2.000.000');
+console.log('✅ Tes 2: Input "2jt" -> Hasil: Rp' + t2.toLocaleString('id-ID'));
+
+// Tes 3: Input: 1,5 juta. Hasil: Rp1.500.000.
+const t3 = parseAmount('1,5 juta');
+assert.strictEqual(t3, 1500000, 'Tes 3 Gagal: 1,5 juta harus 1.500.000');
+console.log('✅ Tes 3: Input "1,5 juta" -> Hasil: Rp' + t3.toLocaleString('id-ID'));
+
+// Tes 4: Input: 500 ribu. Hasil: Rp500.000.
+const t4 = parseAmount('500 ribu');
+assert.strictEqual(t4, 500000, 'Tes 4 Gagal: 500 ribu harus 500.000');
+console.log('✅ Tes 4: Input "500 ribu" -> Hasil: Rp' + t4.toLocaleString('id-ID'));
+
+// Tes 5: Input: 2.000.000. Hasil: Rp2.000.000.
+const t5 = parseAmount('2.000.000');
+assert.strictEqual(t5, 2000000, 'Tes 5 Gagal: 2.000.000 harus 2.000.000');
+console.log('✅ Tes 5: Input "2.000.000" -> Hasil: Rp' + t5.toLocaleString('id-ID'));
+
+console.log('\n--- TEST KASUS JUAL KAMBING: "bro catat jual kambing 2jt" ---');
+const goatResult = geminiService.checkAndFallbackParseTransaction(
+  'bro catat jual kambing 2jt',
+  { role: 'owner' }
+);
+assert.strictEqual(goatResult.recorded, true, 'Transaksi jual kambing harus tercatat!');
+assert.strictEqual(goatResult.transaction.amount, 2000000, 'Nominal harus tepat Rp2.000.000, BUKAN Rp2.000 atau Rp2!');
+assert.strictEqual(goatResult.transaction.type, 'income', 'Harus tercatat sebagai income!');
+assert.strictEqual(goatResult.transaction.isBusiness, true, 'Harus terdeteksi sebagai transaksi bisnis!');
+assert.strictEqual(goatResult.transaction.description, 'Jual kambing', 'Deskripsi harus "Jual kambing"!');
+console.log('1. Berhasil dicatat:', goatResult.transaction.id, goatResult.transaction.type, goatResult.transaction.amount, goatResult.transaction.description);
+console.log('✅ TEST KASUS JUAL KAMBING BERHASIL LULUS 100%\n');
+
+console.log('--- TEST INTEGRASI SEMUA MODUL (SALDO AWAL, UTANG, CICILAN, TRANSFER) ---');
+// 1. Saldo Awal
+const initBalances = fm.setInitialBalance({ personal: '10 juta', business: '5jt' });
+assert.strictEqual(initBalances.personalBalance, 10000000, 'Saldo awal personal harus 10.000.000');
+assert.strictEqual(initBalances.businessBalance, 5000000, 'Saldo awal business harus 5.000.000');
+console.log('✅ 1. Saldo awal terverifikasi: Personal Rp 10.000.000 | Business Rp 5.000.000');
+
+// 2. Utang & Piutang
+const debt = fm.addDebt({ creditor: 'Bank Mandiri', totalAmount: '12 juta', monthlyInstallment: '1 juta' });
+assert.strictEqual(debt.totalAmount, 12000000, 'Total utang harus 12.000.000');
+assert.strictEqual(debt.monthlyInstallment, 1000000, 'Cicilan bulanan harus 1.000.000');
+console.log('✅ 2. Modul Utang terverifikasi: Total Rp 12.000.000 | Cicilan Rp 1.000.000');
+
+// 3. Pembayaran Cicilan
+const payRes = fm.payDebt({ debtId: debt.id, amount: '1 juta' });
+assert.strictEqual(payRes.success, true);
+assert.strictEqual(payRes.debt.remainingAmount, 11000000, 'Sisa utang harus 11.000.000');
+console.log('✅ 3. Modul Pembayaran Cicilan terverifikasi: Sisa Utang Rp 11.000.000');
+
+// 4. Transfer
+const transferRes = geminiService.checkAndFallbackParseTransaction(
+  'transfer keluar untuk tabungan 500rb',
+  { role: 'owner' }
+);
+assert.strictEqual(transferRes.recorded, true);
+assert.strictEqual(transferRes.transaction.amount, 500000, 'Nominal transfer harus 500.000');
+console.log('✅ 4. Modul Transfer/Savings terverifikasi: Nominal Rp 500.000');
+
 console.log('================================================================');
-console.log('🎉 SELURUH SKENARIO PENGUJIAN (KASUS A - F + KASUS NYATA) LULUS 100%! 🎉');
+console.log('🎉 SELURUH SKENARIO PENGUJIAN LULUS 100%! 🎉');
 console.log('================================================================');

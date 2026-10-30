@@ -260,6 +260,39 @@ export class WhatsAppBot {
       return;
     }
 
+    // Jadwal Salat Query
+    const isPrayerScheduleQuery = /(jadwal|waktu|jam berapa)\s*(salat|sholat|solat)/i.test(cleanLower);
+    if (isPrayerScheduleQuery && this.geminiService?.routineManager) {
+      const pt = this.geminiService.routineManager.getPrayerTimesToday();
+      const prayerMsg = `🕌 *JADWAL SALAT HARI INI - ${pt.city.toUpperCase()}*\n\n` +
+        `• Subuh   : *${pt.subuh} WIB*\n` +
+        `• Terbit  : *${pt.terbit} WIB*\n` +
+        `• Dzuhur  : *${pt.dzuhur} WIB*\n` +
+        `• Ashar   : *${pt.ashar} WIB*\n` +
+        `• Maghrib : *${pt.maghrib} WIB*\n` +
+        `• Isya    : *${pt.isya} WIB*\n\n` +
+        `_Waktu dihitung presisi standar Kemenag RI wilayah ${pt.city}._`;
+      await this.sendMessageWithTyping(chatJid, prayerMsg, msg);
+      return;
+    }
+
+    // Auto-detect prayer completion (Salat)
+    const prayerMatch = cleanLower.match(/(?:(?:udah|sudah|selesai|beres)\s*(?:sholat|salat|solat)\s*(subuh|dzuhur|zuhur|ashar|asar|maghrib|isya)|(?:sholat|salat|solat)\s*(subuh|dzuhur|zuhur|ashar|asar|maghrib|isya)\s*(?:udah|sudah|selesai|beres))/i);
+    if (prayerMatch && this.geminiService?.routineManager) {
+      const pName = (prayerMatch[1] || prayerMatch[2] || '').toLowerCase();
+      const stdName = pName.includes('subuh') ? 'Subuh'
+        : (pName.includes('dzuhur') || pName.includes('zuhur')) ? 'Dzuhur'
+        : (pName.includes('ashar') || pName.includes('asar')) ? 'Ashar'
+        : pName.includes('maghrib') ? 'Maghrib' : 'Isya';
+      
+      this.geminiService.routineManager.logHabit({
+        habit: 'prayer',
+        value: stdName,
+        notes: `Telah ditunaikan (${speakerInfo.name})`
+      });
+      console.log(`[WhatsAppBot] 🕌 Salat ${stdName} ditunaikan oleh ${speakerInfo.name}, tercatat ke Rutinitas & SPS.`);
+    }
+
     // Safety check: Ambiguity handling for corrections (Kasus F)
     const isCorrectionIntent = /(?:^|\s|[^a-zA-Z0-9])(?:salah|(?:di|meng)?koreksi|(?:di|me)?ralat|(?:di|meng)?ubah|(?:di|meng)?ganti|(?:di)?revisi|seharusnya|harusnya|mestinya|bukan\s*(?:pemasukan|pengeluaran|tabungan|utang)|(?:jadi|menjadi)\s*(?:pengeluaran|pemasukan))(?:$|\s|[^a-zA-Z0-9])/i.test(cleanLower);
     if (isCorrectionIntent && this.geminiService?.financeManager) {

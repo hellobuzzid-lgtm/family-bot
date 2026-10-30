@@ -104,6 +104,20 @@ export class Scheduler {
       if (nowTime === p.time && !this.lastNotifiedPrayers.has(key)) {
         this.lastNotifiedPrayers.add(key);
         console.log(`[Scheduler] 🕌 Waktu salat ${p.name} (${p.time}) telah tiba.`);
+        
+        // Catat pengingat salat otomatis ke Rutinitas & Kebiasaan (Database & Google Spreadsheet)
+        if (this.routineManager) {
+          try {
+            this.routineManager.logHabit({
+              habit: 'prayer_reminder',
+              value: `Salat ${p.name}`,
+              notes: `Pengingat otomatis waktu salat ${p.name} (${p.time} WIB) Kota Jambi`
+            });
+          } catch (err) {
+            console.warn('[Scheduler] Gagal mencatat log rutinitas salat:', err.message);
+          }
+        }
+
         await this.sendReminder(
           `Bro, waktu salat ${p.name} sudah masuk (${p.time} WIB). Ambil wudhu dan tunaikan kewajiban terlebih dahulu ya. Kerjaan bisa menunggu, tapi panggilan ibadah jangan ditunda.`
         );
