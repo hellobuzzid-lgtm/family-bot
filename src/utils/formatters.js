@@ -15,6 +15,12 @@ export function formatRupiah(amount) {
   }).format(num);
 }
 
+export function isConfirmationText(text) {
+  if (!text) return false;
+  const clean = String(text).toLowerCase().replace(/[!.,?]+/g, ' ').replace(/\s+/g, ' ').trim();
+  return /^(?:ya|iya|benar|bener|betul|setuju|oke|ok|sip|siap|yup|yes|agree|baik|deal|mantap|lanjutkan|okey|okay)(?:\s+(?:bro|nih|dong|deh|lah|ya|bang|min|mas|bener|benar|gan|kuy|setuju|betul|oke))?$/i.test(clean);
+}
+
 /**
  * Robust extraction of Indonesian currency expressions from text
  * Handles: 2 juta, 2jt, 1,5 juta, 500 ribu, 500rb, 500k, 2.000.000, 50.000, 1 miliar, etc.
@@ -23,6 +29,8 @@ export function extractAmount(text) {
   if (text === null || text === undefined) return null;
   const str = String(text).trim();
   if (!str) return null;
+
+  if (isConfirmationText(str)) return null;
 
   if (typeof text === 'number') {
     return { raw: String(text), value: Math.abs(text), index: 0 };

@@ -153,7 +153,7 @@ export class FinanceManager {
   /**
    * RECORD NEW TRANSACTION (With Idempotency & Duplicate Burst Check)
    */
-  recordTransaction({
+  async recordTransaction({
     type = 'expense',
     amount,
     category = 'Umum',
@@ -183,7 +183,8 @@ export class FinanceManager {
           success: true,
           transaction: found,
           balances: this.data.balances,
-          isDuplicate: true
+          isDuplicate: true,
+          spsConfirmed: true
         };
       }
     }
@@ -203,7 +204,8 @@ export class FinanceManager {
         success: true,
         transaction: recentDuplicate,
         balances: this.data.balances,
-        isDuplicate: true
+        isDuplicate: true,
+        spsConfirmed: true
       };
     }
 
@@ -242,17 +244,25 @@ export class FinanceManager {
 
     console.log(`[FinanceManager] Recorded tx: [${newTx.type.toUpperCase()}] ${formatRupiah(parsedAmount)} - ${newTx.description} (ID: ${newTx.id})`);
 
-    // Sync to Google Sheets
-    if (this.googleSheetsService) {
-      this.googleSheetsService.appendTransaction(newTx).catch(err => {
+    // Sync to Google Sheets & verify
+    let spsConfirmed = false;
+    let spsResult = null;
+    if (this.googleSheetsService && this.googleSheetsService.isConfigured()) {
+      try {
+        spsResult = await this.googleSheetsService.appendTransaction(newTx);
+        spsConfirmed = Boolean(spsResult && spsResult.success);
+      } catch (err) {
         console.warn('[FinanceManager] Failed to sync transaction to Google Sheets:', err.message);
-      });
+        spsResult = { success: false, error: err.message };
+      }
     }
 
     return {
       success: true,
       transaction: newTx,
-      balances: this.data.balances
+      balances: this.data.balances,
+      spsConfirmed,
+      spsResult
     };
   }
 
@@ -383,7 +393,7 @@ export class FinanceManager {
    * CORRECT EXISTING TRANSACTION
    * Modifies existing transaction in-place by ID, preserving ID and recalculating SSOT.
    */
-  correctTransaction(id, updates = {}, { reason = 'Koreksi pengguna', idempotencyKey = null } = {}) {
+  async correctTransaction(id, updates = {}, { reason = 'Koreksi pengguna', idempotencyKey = null } = {}) {
     const tx = this.data.transactions.find(t => t.id === id);
     if (!tx) {
       return { success: false, message: `Transaksi dengan ID ${id} tidak ditemukan.` };
@@ -444,18 +454,26 @@ export class FinanceManager {
 
     console.log(`[FinanceManager] ✅ Corrected tx ${tx.id}: [${previousSnapshot.type} -> ${tx.type}] ${formatRupiah(previousSnapshot.amount)} -> ${formatRupiah(tx.amount)}`);
 
-    // Sync to Google Sheets
-    if (this.googleSheetsService) {
-      this.googleSheetsService.updateTransaction(tx, previousSnapshot).catch(err => {
+    // Sync to Google Sheets & verify
+    let spsConfirmed = false;
+    let spsResult = null;
+    if (this.googleSheetsService && this.googleSheetsService.isConfigured()) {
+      try {
+        spsResult = await this.googleSheetsService.updateTransaction(tx, previousSnapshot);
+        spsConfirmed = Boolean(spsResult && spsResult.success);
+      } catch (err) {
         console.warn('[FinanceManager] Failed to sync updated tx to Google Sheets:', err.message);
-      });
+        spsResult = { success: false, error: err.message };
+      }
     }
 
     return {
       success: true,
       transaction: tx,
       previous: previousSnapshot,
-      balances: this.data.balances
+      balances: this.data.balances,
+      spsConfirmed,
+      spsResult
     };
   }
 
@@ -463,7 +481,7 @@ export class FinanceManager {
    * CANCEL / DELETE TRANSACTION
    * Marks transaction as cancelled and recalculates SSOT balances.
    */
-  deleteTransaction(id, { reason = 'Dibatalkan pengguna', idempotencyKey = null } = {}) {
+  async deleteTransaction(id, { reason = 'Dibatalkan pengguna', idempotencyKey = null } = {}) {
     const tx = this.data.transactions.find(t => t.id === id);
     if (!tx) {
       return { success: false, message: `Transaksi dengan ID ${id} tidak ditemukan.` };
@@ -489,18 +507,26 @@ export class FinanceManager {
 
     console.log(`[FinanceManager] 🗑️ Cancelled tx ${tx.id}: ${tx.description} (${formatRupiah(tx.amount)})`);
 
-    // Sync to Google Sheets
-    if (this.googleSheetsService) {
-      this.googleSheetsService.deleteTransaction(tx.id).catch(err => {
+    // Sync to Google Sheets & verify
+    let spsConfirmed = false;
+    let spsResult = null;
+    if (this.googleSheetsService && this.googleSheetsService.isConfigured()) {
+      try {
+        spsResult = await this.googleSheetsService.deleteTransaction(tx.id);
+        spsConfirmed = Boolean(spsResult && spsResult.success);
+      } catch (err) {
         console.warn('[FinanceManager] Failed to sync deleted tx to Google Sheets:', err.message);
-      });
+        spsResult = { success: false, error: err.message };
+      }
     }
 
     return {
       success: true,
       transaction: tx,
       previous: previousSnapshot,
-      balances: this.data.balances
+      balances: this.data.balances,
+      spsConfirmed,
+      spsResult
     };
   }
 
@@ -685,6 +711,131 @@ ${recentTxList}
         `• *Top Kategori Pengeluaran:* ${topCatStr}\n\n` +
         `📊 *Status:* Seluruh laporan bulanan telah dihitung ulang berdasarkan transaksi aktif.`
     };
+  }
+
+  /**
+   * SPECIFIC INCOME/BUSINESS SOURCE QUERY (Section 1)
+   * Example: "Berapa pendapatan KEYNEX bulan ini?"
+   * Strictly isolates the requested source from all other businesses.
+   */
+  getFinancesBySource(sourceName, { month = null, year = null, owner = null } = {}) {
+    if (!sourceName) return null;
+    const cleanSource = String(sourceName).trim().toLowerCase();
+    const now = getNow();
+    const targetMonth = month || now.format('YYYY-MM');
+
+    const matchingTxs = this.data.transactions.filter(t => {
+      if (t.status !== 'active') return false;
+      if (owner && t.owner !== owner) return false;
+
+      // Filter by period if specified
+      if (targetMonth && !t.date.startsWith(targetMonth)) return false;
+
+      const desc = (t.description || '').toLowerCase();
+      const cat = (t.category || '').toLowerCase();
+      return desc.includes(cleanSource) || cat.includes(cleanSource);
+    });
+
+    const income = matchingTxs
+      .filter(t => t.type === 'income')
+      .reduce((acc, c) => acc + c.amount, 0);
+
+    const expense = matchingTxs
+      .filter(t => t.type === 'expense')
+      .reduce((acc, c) => acc + c.amount, 0);
+
+    const net = income - expense;
+
+    const sourceLabel = sourceName.toUpperCase();
+    const monthLabel = dayjs(targetMonth + '-01').format('MMMM YYYY');
+
+    const txRows = matchingTxs.map(t =>
+      `  • [${t.date.split(' ')[0]}] [${t.type.toUpperCase()}] ${formatRupiah(t.amount)}: ${t.description}`
+    );
+
+    const summaryText = `💼 *ANALISIS KEUANGAN SPESIFIK: ${sourceLabel}*\n` +
+      `📅 *Periode:* ${monthLabel}\n\n` +
+      `• *Total Pendapatan / Omzet:* ${formatRupiah(income)}\n` +
+      `• *Total Beban / Pengeluaran:* ${formatRupiah(expense)}\n` +
+      `• *Laba / Keuntungan Bersih:* ${formatRupiah(net)} (${net >= 0 ? 'Surplus/Untung 🟢' : 'Defisit/Rugi 🔴'})\n` +
+      `• *Jumlah Transaksi:* ${matchingTxs.length} transaksi\n\n` +
+      (txRows.length > 0 ? `📜 *Riwayat Transaksi Terkait:*\n${txRows.join('\n')}\n\n` : '') +
+      `📌 *Catatan:* Perhitungan ini murni diisolasi dari sumber ${sourceLabel} saja berdasarkan data transaksi aktif.`;
+
+    return {
+      source: sourceName,
+      month: targetMonth,
+      monthLabel,
+      income,
+      expense,
+      net,
+      transactionCount: matchingTxs.length,
+      transactions: matchingTxs,
+      summaryText
+    };
+  }
+
+  getDailyRecap(targetDate = null, owner = 'owner') {
+    const dStr = targetDate || getNow().format('YYYY-MM-DD');
+    const dayTxs = this.data.transactions.filter(t => {
+      return t.status === 'active' && t.date.startsWith(dStr) && (!owner || t.owner === owner);
+    });
+
+    const income = dayTxs.filter(t => t.type === 'income').reduce((acc, c) => acc + c.amount, 0);
+    const expense = dayTxs.filter(t => t.type === 'expense').reduce((acc, c) => acc + c.amount, 0);
+    const net = income - expense;
+
+    return {
+      date: dStr,
+      income,
+      expense,
+      net,
+      transactions: dayTxs,
+      summaryText: `📅 *REKAP KEUANGAN HARIAN (${dStr})*\n\n` +
+        `• Pemasukan : ${formatRupiah(income)}\n` +
+        `• Pengeluaran: ${formatRupiah(expense)}\n` +
+        `• Net Hari Ini: ${formatRupiah(net)} (${net >= 0 ? 'Surplus ✅' : 'Defisit ⚠️'})\n` +
+        `• Total Transaksi: ${dayTxs.length} transaksi`
+    };
+  }
+
+  getAnnualRecap(targetYear = null, owner = 'owner') {
+    const yStr = targetYear ? String(targetYear) : getNow().format('YYYY');
+    const yearTxs = this.data.transactions.filter(t => {
+      return t.status === 'active' && t.date.startsWith(yStr) && (!owner || t.owner === owner);
+    });
+
+    const income = yearTxs.filter(t => t.type === 'income').reduce((acc, c) => acc + c.amount, 0);
+    const expense = yearTxs.filter(t => t.type === 'expense').reduce((acc, c) => acc + c.amount, 0);
+    const savings = yearTxs.filter(t => t.type === 'savings' || t.type === 'emergency').reduce((acc, c) => acc + c.amount, 0);
+    const net = income - expense;
+
+    return {
+      year: yStr,
+      income,
+      expense,
+      savings,
+      net,
+      transactionsCount: yearTxs.length,
+      summaryText: `📊 *REKAP KEUANGAN TAHUNAN (${yStr})*\n\n` +
+        `• Total Pemasukan Tahunan : ${formatRupiah(income)}\n` +
+        `• Total Pengeluaran Tahunan: ${formatRupiah(expense)}\n` +
+        `• Total Tabungan Disimpan : ${formatRupiah(savings)}\n` +
+        `• Net Saldo Tahunan       : ${formatRupiah(net)} (${net >= 0 ? 'Surplus ✅' : 'Defisit ⚠️'})\n` +
+        `• Volume Transaksi        : ${yearTxs.length} transaksi`
+    };
+  }
+
+  async syncWithSpreadsheet() {
+    if (!this.googleSheetsService || !this.googleSheetsService.isConfigured()) {
+      return { success: false, reason: 'NOT_CONFIGURED' };
+    }
+    const res = await this.googleSheetsService.fetchSpreadsheetFinances();
+    if (res.success && res.data && res.data.status === 'success') {
+      console.log(`[FinanceManager] 📥 Synced with Google Spreadsheet (SPS). Total remote transactions: ${res.data.totalTransactions}`);
+      return { success: true, data: res.data };
+    }
+    return { success: false, error: res.error || 'Gagal sinkron dari spreadsheet' };
   }
 
   setInitialBalance({ personal = null, business = null, savings = null, emergency = null }) {

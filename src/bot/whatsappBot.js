@@ -410,8 +410,8 @@ export class WhatsAppBot {
     }
 
     // 5. Check if parent/owner asks for specific life partner utilities in group:
-    // (e.g. tanya jadwal salat, minta evaluasi, tanya keuangan bersama, minta saran, rekap, koreksi, audit)
-    const utilityKeywords = /(jadwal salat|waktu salat|evaluasi|rekap|ringkasan|catat|koreksi|ralat|audit|rekonsiliasi|pengeluaran|pemasukan|keuangan|saran|pendapat kamu|menurut kamu|target kita)/i;
+    // (e.g. tanya jadwal salat, minta evaluasi, tanya keuangan bersama, minta saran, rekap, koreksi, audit, briefing, tugas)
+    const utilityKeywords = /(jadwal salat|waktu salat|evaluasi|rekap|ringkasan|catat|koreksi|ralat|audit|rekonsiliasi|pengeluaran|pemasukan|keuangan|saran|pendapat kamu|menurut kamu|target kita|briefing|daily briefing|pekerjaan|tugas|harus saya lakukan|ngapain|keynex)/i;
     if (utilityKeywords.test(lowerText)) {
       console.log(`[WhatsAppBot] 🎯 Triggered by UTILITY KEYWORD: "${cleanText}"`);
       return true;

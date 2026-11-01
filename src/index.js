@@ -3,6 +3,7 @@ import { MemoryManager } from './services/memoryManager.js';
 import { FinanceManager } from './services/financeManager.js';
 import { GoalTracker } from './services/goalTracker.js';
 import { RoutineManager } from './services/routineManager.js';
+import { TaskManager } from './services/taskManager.js';
 import { GoogleSheetsService } from './services/googleSheetsService.js';
 import { MasterPromptBuilder } from './core/masterPrompt.js';
 import { GeminiService } from './services/geminiService.js';
@@ -10,9 +11,9 @@ import { WhatsAppBot } from './bot/whatsappBot.js';
 import { Scheduler } from './services/scheduler.js';
 
 console.log('================================================================');
-console.log('🌟 AI PERSONAL LIFE PARTNER v2.0 🌟');
-console.log('Personal Assistant, Financial Advisor, Life Coach, Business Consultant,');
-console.log('Relationship Mediator, Long-Term Memory & Continuous Learning AI');
+console.log('🌟 AI PERSONAL ASSISTANT & LIFE PARTNER v3.0 🌟');
+console.log('Personal Assistant, Financial Advisor, Schedule & Routine Manager,');
+console.log('Target Tracker, Daily Briefing, Real-Time Evaluator & Long-Term Memory');
 console.log('================================================================');
 console.log(`👤 Owner (${config.ownerName}): ${config.ownerPhone || 'Not set'}`);
 console.log(`💍 Partner (${config.partnerName}): ${config.partnerPhone || 'Not set'}`);
@@ -31,13 +32,15 @@ async function main() {
     const financeManager = new FinanceManager(googleSheetsService);
     const goalTracker = new GoalTracker(googleSheetsService);
     const routineManager = new RoutineManager(googleSheetsService);
+    const taskManager = new TaskManager();
 
     // 2. Initialize prompt builder
     const promptBuilder = new MasterPromptBuilder(
       memoryManager,
       financeManager,
       goalTracker,
-      routineManager
+      routineManager,
+      taskManager
     );
 
     // 3. Initialize AI reasoning service
@@ -46,7 +49,8 @@ async function main() {
       memoryManager,
       financeManager,
       goalTracker,
-      routineManager
+      routineManager,
+      taskManager
     );
 
     // 4. Initialize WhatsApp Bot Engine
@@ -57,7 +61,9 @@ async function main() {
       whatsappBot,
       routineManager,
       financeManager,
-      goalTracker
+      goalTracker,
+      taskManager,
+      geminiService
     );
 
     // 6. Start WhatsApp Bot

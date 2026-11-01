@@ -144,10 +144,144 @@ function doPost(e) {
 
 function doGet(e) {
   var ss = SpreadsheetApp.getActiveSpreadsheet();
-  if (e && e.parameter && e.parameter.action === 'refresh' && ss) {
+  if (!ss) {
+    return ContentService.createTextOutput(JSON.stringify({ status: 'error', message: 'No active spreadsheet.' })).setMimeType(ContentService.MimeType.JSON);
+  }
+
+  var action = (e && e.parameter && e.parameter.action) ? e.parameter.action.toLowerCase() : '';
+
+  // 1. Refresh Rekap
+  if (action === 'refresh') {
     updateRecapSheets(ss);
     return ContentService.createTextOutput(JSON.stringify({ status: 'success', message: 'Recap updated' })).setMimeType(ContentService.MimeType.JSON);
   }
+
+  // 2. READ FINANCES (SPS AS SINGLE SOURCE OF TRUTH)
+  if (action === 'get_finances' || action === 'read' || action === 'get_transactions') {
+    var sheet = ss.getSheetByName('Transaksi Keuangan');
+    if (!sheet) {
+      return ContentService.createTextOutput(JSON.stringify({
+        status: 'success',
+        transactions: [],
+        balances: { personal: 0, business: 0, total: 0 },
+        message: 'Sheet Transaksi Keuangan belum memiliki data.'
+      })).setMimeType(ContentService.MimeType.JSON);
+    }
+
+    var lastRow = sheet.getLastRow();
+    if (lastRow <= 1) {
+      return ContentService.createTextOutput(JSON.stringify({
+        status: 'success',
+        transactions: [],
+        balances: { personal: 0, business: 0, total: 0 }
+      })).setMimeType(ContentService.MimeType.JSON);
+    }
+
+    var data = sheet.getRange(2, 1, lastRow - 1, 10).getValues();
+    var filterSource = (e.parameter.source || '').trim().toLowerCase();
+    var filterMonth = (e.parameter.month || '').trim(); // e.g. "2026-11"
+
+    var txList = [];
+    var totalIncome = 0;
+    var totalExpense = 0;
+    var personalBal = 0;
+    var businessBal = 0;
+
+    var sourceIncome = 0;
+    var sourceExpense = 0;
+    var sourceTxCount = 0;
+    var sourceTxs = [];
+
+    for (var i = 0; i < data.length; i++) {
+      var row = data[i];
+      var rawAmt = row[4];
+      var amt = 0;
+      if (typeof rawAmt === 'number') {
+        amt = rawAmt;
+      } else {
+        amt = parseFloat(String(rawAmt || '').replace(/[^0-9.-]+/g, '')) || 0;
+      }
+
+      var jenisStr = String(row[3] || '').toLowerCase().trim();
+      var isIncome = jenisStr.includes('pemasukan') || jenisStr === 'income';
+      var isExpense = jenisStr.includes('pengeluaran') || jenisStr === 'expense';
+      var akunStr = String(row[7] || '').toLowerCase().trim();
+      var isBiz = akunStr.includes('bisnis') || akunStr.includes('business');
+
+      var dateStr = String(row[1] || '').trim();
+      var descStr = String(row[6] || '').trim();
+      var catStr = String(row[5] || '').trim();
+      var txId = String(row[9] || '').trim();
+
+      var txObj = {
+        id: txId,
+        timestamp: row[0],
+        date: dateStr,
+        time: String(row[2] || ''),
+        type: isIncome ? 'income' : 'expense',
+        amount: amt,
+        category: catStr,
+        description: descStr,
+        isBusiness: isBiz,
+        owner: String(row[8] || 'owner')
+      };
+
+      txList.push(txObj);
+
+      if (isIncome) {
+        totalIncome += amt;
+        if (isBiz) businessBal += amt; else personalBal += amt;
+      } else if (isExpense) {
+        totalExpense += amt;
+        if (isBiz) businessBal -= amt; else personalBal -= amt;
+      }
+
+      // Check specific source filter (e.g. KEYNEX)
+      if (filterSource) {
+        var matchSource = descStr.toLowerCase().includes(filterSource) || catStr.toLowerCase().includes(filterSource);
+        var matchMonth = !filterMonth || dateStr.startsWith(filterMonth);
+        if (matchSource && matchMonth) {
+          sourceTxCount++;
+          if (isIncome) sourceIncome += amt;
+          if (isExpense) sourceExpense += amt;
+          sourceTxs.push(txObj);
+        }
+      }
+    }
+
+    var resultPayload = {
+      status: 'success',
+      spreadsheetName: ss.getName(),
+      totalTransactions: txList.length,
+      balances: {
+        personal: personalBal,
+        business: businessBal,
+        total: personalBal + businessBal
+      },
+      summary: {
+        totalIncome: totalIncome,
+        totalExpense: totalExpense,
+        netCashflow: totalIncome - totalExpense
+      },
+      transactions: txList.slice(-50).reverse() // recent 50
+    };
+
+    if (filterSource) {
+      resultPayload.sourceFilter = filterSource;
+      resultPayload.sourceSummary = {
+        source: filterSource,
+        month: filterMonth || 'Semua Periode',
+        income: sourceIncome,
+        expense: sourceExpense,
+        netProfit: sourceIncome - sourceExpense,
+        transactionCount: sourceTxCount,
+        transactions: sourceTxs
+      };
+    }
+
+    return ContentService.createTextOutput(JSON.stringify(resultPayload)).setMimeType(ContentService.MimeType.JSON);
+  }
+
   return ContentService.createTextOutput(JSON.stringify({
     status: 'online',
     message: 'NEX Google Sheets Webhook is ready!',

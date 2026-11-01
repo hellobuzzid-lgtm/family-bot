@@ -166,6 +166,50 @@ export class GoogleSheetsService {
   }
 
   /**
+   * Read financial data directly from Google Spreadsheet (Single Source of Truth)
+   */
+  async fetchSpreadsheetFinances(source = null, month = null) {
+    if (!this.isConfigured()) return { success: false, reason: 'NOT_CONFIGURED' };
+
+    let url = this.cleanWebhookUrl(this.webhookUrl);
+    url += (url.includes('?') ? '&' : '?') + 'action=get_finances';
+    if (source) {
+      url += '&source=' + encodeURIComponent(source);
+    }
+    if (month) {
+      url += '&month=' + encodeURIComponent(month);
+    }
+
+    try {
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 15000);
+
+      const response = await fetch(url, {
+        method: 'GET',
+        headers: {
+          'Accept': 'application/json',
+          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
+        },
+        redirect: 'follow',
+        signal: controller.signal
+      });
+
+      clearTimeout(timeoutId);
+      const resText = await response.text();
+
+      try {
+        const json = JSON.parse(resText);
+        return { success: true, data: json };
+      } catch (_) {
+        return { success: false, raw: resText, error: 'Gagal parse JSON dari Google Sheets' };
+      }
+    } catch (err) {
+      console.warn(`[GoogleSheetsService] Error reading from spreadsheet: ${err.message}`);
+      return { success: false, error: err.message };
+    }
+  }
+
+  /**
    * Trigger manual refresh of weekly & monthly recap sheets in Google Spreadsheet
    */
   async refreshRecap() {
