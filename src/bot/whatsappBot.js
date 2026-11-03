@@ -47,7 +47,6 @@ export class WhatsAppBot {
       clearTimeout(this.reconnectTimeout);
       this.reconnectTimeout = null;
     }
-    this.isPairingRequested = false;
 
     // If requested via env, reset auth directory cleanly
     if (process.env.RESET_AUTH === 'true') {
@@ -141,16 +140,23 @@ export class WhatsAppBot {
           clearTimeout(this.pairingTimeout);
           this.pairingTimeout = null;
         }
-        this.isPairingRequested = false;
 
         const statusCode = (lastDisconnect?.error instanceof Boom) ? lastDisconnect.error.output.statusCode : null;
         const errMsg = (lastDisconnect?.error?.message || '').toLowerCase();
-        const isLoggedOut = statusCode === DisconnectReason.loggedOut || statusCode === 401 || statusCode === 403 || errMsg.includes('connection failure') || errMsg.includes('logged out') || errMsg.includes('bad session');
+        const isRestartRequired = statusCode === DisconnectReason.restartRequired || statusCode === 515;
+        const isLoggedOut = statusCode === DisconnectReason.loggedOut || statusCode === 401 || statusCode === 403 || errMsg.includes('logged out') || errMsg.includes('bad session');
         const shouldReconnect = !isLoggedOut;
 
         console.log(`[WhatsAppBot] Connection closed. Reason: ${lastDisconnect?.error?.message || statusCode}. StatusCode: ${statusCode}. Reconnecting: ${shouldReconnect}`);
 
+        if (isRestartRequired) {
+          console.log('🔄 [WhatsAppBot] WhatsApp menyelesaikan pairing (515 restartRequired). Menghubungkan ulang dalam 2 detik...');
+          this.reconnectTimeout = setTimeout(() => this.start(), 2000);
+          return;
+        }
+
         if (isLoggedOut) {
+          this.isPairingRequested = false;
           console.log('⚠️ [WhatsAppBot] Sesi WhatsApp sebelumnya telah LOGGED OUT atau TIDAK VALID.');
           console.log('🔄 [WhatsAppBot] Membersihkan direktori auth_info_baileys secara otomatis agar bot meminta KODE PAIRING BARU...');
           try {
