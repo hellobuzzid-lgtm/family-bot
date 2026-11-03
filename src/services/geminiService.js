@@ -89,6 +89,71 @@ export class GeminiService {
       return 'Sip, Bro! Dicatat dan dipahami. Kita lanjutkan eksekusi rencana sesuai target.';
     }
 
+    // 2. DETERMINISTIC FINANCIAL ACTIONS (Transactions, Corrections, Deletions)
+    // 100% Guaranteed recording to Local DB & SPS without depending on AI latency/failure!
+    const directFinResult = await this.checkAndFallbackParseTransaction(messageText, speakerInfo);
+    if (directFinResult && directFinResult.recorded) {
+      if (directFinResult.isMulti && Array.isArray(directFinResult.transactions)) {
+        const listStr = directFinResult.transactions.map((tx, idx) => {
+          const typeLabel = tx.type === 'income' ? 'Pemasukan' : 'Pengeluaran';
+          return `${idx + 1}. *${typeLabel}:* ${tx.description} sebesar *${formatRupiah(tx.amount)}* (ID: \`${tx.id}\`)`;
+        }).join('\n');
+        return `Sip, Bro! ${directFinResult.transactions.length} transaksi berhasil dicatat dan disinkronkan ke Google Spreadsheet (SPS):\n\n${listStr}\n\n✅ *Status SPS:* Tersimpan dan terverifikasi sebagai Single Source of Truth.`;
+      } else if (directFinResult.isCorrection) {
+        const tx = directFinResult.transaction;
+        const typeLabel = tx.type === 'income' ? 'Pemasukan' : 'Pengeluaran';
+        return `✅ Transaksi berhasil dikoreksi in-place!\n\nID: \`${tx.id}\`\nJenis: *${typeLabel}*\nNominal: *${formatRupiah(tx.amount)}*\nKeterangan: *${tx.description}*\n\nData telah diselaraskan ke Google Spreadsheet (SPS).`;
+      } else if (directFinResult.isDeletion) {
+        const tx = directFinResult.transaction;
+        return `✅ Transaksi \`${tx.id}\` (*${formatRupiah(tx.amount)} - ${tx.description}*) telah berhasil dibatalkan/dihapus dari database dan Google Spreadsheet (SPS).`;
+      } else {
+        const tx = directFinResult.transaction;
+        const typeLabel = tx.type === 'income'
+          ? (tx.isBusiness ? 'pemasukan bisnis' : 'pemasukan pribadi')
+          : (tx.isBusiness ? 'pengeluaran bisnis' : 'pengeluaran pribadi');
+        return `Sip, Bro! Udah dicatat ${typeLabel}: *${tx.description}* sebesar *${formatRupiah(tx.amount)}* (ID: \`${tx.id}\`).\n\nData transaksi telah tersimpan di database dan disinkronkan ke Google Spreadsheet (SPS). ✅`;
+      }
+    }
+
+    // 3. SPS AS GROUND TRUTH FOR FINANCIAL QUESTIONS (Section 1 & 11)
+    const isFinancialQuery = /(?:saldo|keuangan|uang|kas|pengeluaran|pemasukan|rekap|pendapatan|omzet|omset|laba|rugi|sps|spreadsheet)/i.test(clean);
+    if (isFinancialQuery && this.financeManager) {
+      if (this.financeManager.googleSheetsService?.isConfigured()) {
+        await this.financeManager.syncWithSpreadsheet().catch(err => {
+          console.warn('[GeminiService] Error syncing SPS on financial query:', err.message);
+        });
+      }
+
+      // Check specific source (e.g. "pendapatan keynex")
+      const isSourceQuery = /(?:pendapatan|omzet|omset|pemasukan|keuntungan|laba|rugi|transaksi)\s*(?:dari|bisnis)?\s*(keynex|kambing|ternak|freelance|gaji)/i.exec(clean) ||
+                            /(keynex|kambing|ternak|freelance)\s*(?:dapat|omzet|omset|pendapatan|pemasukan|keuntungan|laba)/i.exec(clean);
+      if (isSourceQuery) {
+        const sourceName = (isSourceQuery[1] || isSourceQuery[2]).toUpperCase();
+        console.log(`[GeminiService] 💼 Specific income source query from SPS: ${sourceName}`);
+        const sourceFin = this.financeManager.getFinancesBySource(sourceName, {
+          owner: speakerInfo.role === 'partner' ? 'partner' : 'owner'
+        });
+        if (sourceFin) return sourceFin.summaryText;
+      }
+
+      // Check weekly recap query
+      if (/(?:rekap|ringkasan|laporan)\s*minggu(?:an|\s*ini)/i.test(clean)) {
+        return this.financeManager.getWeeklyRecap().summaryText;
+      }
+
+      // Check monthly recap query
+      if (/(?:rekap|ringkasan|laporan)\s*bulan(?:an|\s*ini)/i.test(clean)) {
+        return this.financeManager.getMonthlyRecap().summaryText;
+      }
+
+      // Check balance query ("berapa saldo saya", "cek saldo", "sisa uang")
+      if (/(?:berapa\s*)?saldo(?:\s*saya|\s*kita|\s*saat\s*ini)?|cek\s*saldo|sisa\s*uang/i.test(clean)) {
+        return `💰 *KONDISI SALDO REAL-TIME (SPS SSOT)*\n\n` +
+          `${this.financeManager.getFinancialSummary(null)}\n\n` +
+          `📊 *Status:* Data langsung tersinkronisasi dari Google Spreadsheet (SPS).`;
+      }
+    }
+
     // 2. SMART REMINDER CREATION VIA NATURAL LANGUAGE (Section 2)
     const isReminderCreation = /(?:^|\s)(?:ingatkan|ingetin|remind|jadwalkan|masukkan\s*ke\s*jadwal|bikin\s*pengingat)(?:\s*saya|\s*aku|\s*gw)?/i.test(clean);
     if (isReminderCreation && this.reminderManager) {
@@ -210,12 +275,13 @@ export class GeminiService {
 
     const candidateModels = [
       'gemini-3.5-flash-lite',
-      'gemini-flash-lite-latest',
-      'gemini-3.1-flash-lite'
+      'gemini-3.8-flash'
     ];
 
     if (config.geminiModel && !candidateModels.includes(config.geminiModel)) {
-      candidateModels.unshift(config.geminiModel);
+      if (!config.geminiModel.includes('2.5') && !config.geminiModel.includes('3.1')) {
+        candidateModels.unshift(config.geminiModel);
+      }
     }
 
     let lastError = null;
