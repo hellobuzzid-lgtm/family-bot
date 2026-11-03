@@ -4,13 +4,15 @@ import { config } from '../config.js';
 import { parseAmount, extractAmount, formatRupiah, isConfirmationText, getNow, formatIndoDate } from '../utils/formatters.js';
 
 export class GeminiService {
-  constructor(promptBuilder, memoryManager, financeManager, goalTracker, routineManager, taskManager = null) {
+  constructor(promptBuilder, memoryManager, financeManager, goalTracker, routineManager, taskManager = null, reminderManager = null, googleSheetsService = null) {
     this.promptBuilder = promptBuilder;
     this.memoryManager = memoryManager;
     this.financeManager = financeManager;
     this.goalTracker = goalTracker;
     this.routineManager = routineManager;
     this.taskManager = taskManager;
+    this.reminderManager = reminderManager;
+    this.googleSheetsService = googleSheetsService;
 
     if (!config.geminiApiKey) {
       console.warn('⚠️ [GeminiService] GEMINI_API_KEY is not set in .env!');
@@ -25,6 +27,17 @@ export class GeminiService {
     if (this.promptBuilder) {
       this.promptBuilder.setTaskManager(taskManager);
     }
+  }
+
+  setReminderManager(reminderManager) {
+    this.reminderManager = reminderManager;
+    if (this.promptBuilder) {
+      this.promptBuilder.setReminderManager(reminderManager);
+    }
+  }
+
+  setGoogleSheetsService(googleSheetsService) {
+    this.googleSheetsService = googleSheetsService;
   }
 
   isAvailable() {
@@ -43,11 +56,87 @@ export class GeminiService {
 
     const clean = (messageText || '').toLowerCase().trim();
 
+    // 0. ACTIVITY CONFIRMATION RESPONSE (Section 3: "Sudah", "Belum", "Lewati", "Jadwalkan ulang")
+    if (this.reminderManager) {
+      const confRes = this.reminderManager.handleConfirmationResponse(clean, speakerInfo.role);
+      if (confRes && confRes.handled) {
+        console.log(`[GeminiService] 🔔 Activity confirmation handled: ${confRes.status}`);
+        return confRes.message;
+      }
+
+      // Check if user is replying to a pending time clarification
+      if (this.reminderManager.pendingClarifications.has(speakerInfo.role)) {
+        const pending = this.reminderManager.pendingClarifications.get(speakerInfo.role);
+        const resolved = this.reminderManager.parseNaturalReminder(messageText);
+        if (resolved && !resolved.requiresClarification) {
+          this.reminderManager.pendingClarifications.delete(speakerInfo.role);
+          const rem = this.reminderManager.createReminder({
+            activity: pending.activity,
+            dueDate: resolved.dueDate,
+            dueTime: resolved.dueTime,
+            repeat: pending.repeat,
+            owner: speakerInfo.role
+          });
+          return `Baik, sudah saya masukkan ke jadwal.\n\nAktivitas: *${rem.activity}*\nWaktu: *${rem.dueDate === getNow().format('YYYY-MM-DD') ? 'Hari ini' : rem.dueDate} pukul ${rem.dueTime} WIB*.\n\nSaya akan mengingatkan kamu pada waktu tersebut. ⏰`;
+        }
+      }
+    }
+
     // 1. SAFETY: Check Confirmation Words ("Ya", "Benar", "Setuju", "Oke", "Sip")
     // Never re-process amounts or trigger new transactions on pure confirmation!
     if (isConfirmationText(clean)) {
       console.log(`[GeminiService] 🛡️ Recognized pure confirmation: "${clean}"`);
       return 'Sip, Bro! Dicatat dan dipahami. Kita lanjutkan eksekusi rencana sesuai target.';
+    }
+
+    // 2. SMART REMINDER CREATION VIA NATURAL LANGUAGE (Section 2)
+    const isReminderCreation = /(?:^|\s)(?:ingatkan|ingetin|remind|jadwalkan|masukkan\s*ke\s*jadwal|bikin\s*pengingat)(?:\s*saya|\s*aku|\s*gw)?/i.test(clean);
+    if (isReminderCreation && this.reminderManager) {
+      const parsed = this.reminderManager.parseNaturalReminder(messageText);
+      if (parsed) {
+        if (parsed.requiresClarification) {
+          this.reminderManager.pendingClarifications.set(speakerInfo.role, parsed);
+          return parsed.clarificationQuestion;
+        } else {
+          const rem = this.reminderManager.createReminder({
+            activity: parsed.activity,
+            dueDate: parsed.dueDate,
+            dueTime: parsed.dueTime,
+            repeat: parsed.repeat,
+            repeatDay: parsed.repeatDay,
+            owner: speakerInfo.role
+          });
+          return `Baik, sudah saya masukkan ke jadwal.\n\nAktivitas: *${rem.activity}*\nWaktu: *${rem.dueDate === getNow().format('YYYY-MM-DD') ? 'Hari ini' : rem.dueDate} pukul ${rem.dueTime} WIB*${rem.repeat !== 'none' ? ` (${rem.repeat})` : ''}.\n\nSaya akan mengingatkan kamu pada waktu tersebut. ⏰`;
+        }
+      }
+    }
+
+    // 3. SMART REMINDER MODIFICATION / RESCHEDULING (Section 2)
+    const isReminderModify = /(?:ubah|ganti|tunda|majukan|batalkan|hapus|ingatkan\s*lagi)\s*(?:jadwal|pengingat|tadi|kegiatan|aktivitas|jadi\s*jam|ke\s*jam|\d+\s*jam|\d+\s*menit|besok)?/i.test(clean);
+    if (isReminderModify && this.reminderManager) {
+      if (/batal|hapus/i.test(clean)) {
+        const cancelTarget = clean.replace(/batal(?:kan)?|hapus|pengingat|jadwal|tadi/gi, '').trim();
+        const cancelResult = this.reminderManager.cancelReminder(cancelTarget || null);
+        if (cancelResult.success) {
+          return `Pengingat untuk *${cancelResult.reminder.activity}* berhasil dibatalkan. ✅`;
+        }
+      } else {
+        const resResult = this.reminderManager.rescheduleReminder(null, clean);
+        if (resResult.success) {
+          return `Pengingat *${resResult.reminder.activity}* berhasil diperbarui ke pukul *${resResult.reminder.dueTime} WIB* (${resResult.reminder.dueDate}). 🔄`;
+        }
+      }
+    }
+
+    // 4. SCHEDULE & UNFINISHED TASKS QUERIES (Section 6)
+    const isScheduleQuery = /(?:apa\s*(?:saja\s*)?)?jadwal\s*(?:saya|hari\s*ini)|jadwal\s*kegiatan/i.test(clean);
+    if (isScheduleQuery) {
+      return this.buildTodaySchedule(speakerInfo);
+    }
+
+    const isUnfinishedQuery = /(?:apa\s*(?:saja\s*)?)?(?:yang\s*)?belum\s*(?:saya|gw|aku|kita)?\s*(?:selesaikan|beres|selesai|kerjakan)|tugas\s*tertunda|pekerjaan\s*pending/i.test(clean);
+    if (isUnfinishedQuery) {
+      return this.buildUnfinishedItems(speakerInfo);
     }
 
     // 2. SPECIFIC BUSINESS / INCOME SOURCE QUERY (e.g. "pendapatan keynex bulan ini")
@@ -591,6 +680,36 @@ export class GeminiService {
           });
           break;
 
+        case 'CREATE_REMINDER':
+          if (this.reminderManager) {
+            this.reminderManager.createReminder({
+              activity: data.activity,
+              dueDate: data.dueDate,
+              dueTime: data.dueTime,
+              repeat: data.repeat,
+              repeatDay: data.repeatDay,
+              priority: data.priority,
+              owner
+            });
+          }
+          break;
+
+        case 'MODIFY_REMINDER':
+        case 'RESCHEDULE_REMINDER':
+          if (this.reminderManager) {
+            this.reminderManager.modifyReminder(data.idOrActivity || data.activity, {
+              newTime: data.newTime,
+              newDate: data.newDate
+            });
+          }
+          break;
+
+        case 'CANCEL_REMINDER':
+          if (this.reminderManager) {
+            this.reminderManager.cancelReminder(data.idOrActivity || data.activity);
+          }
+          break;
+
         default:
           console.warn(`[GeminiService] Unknown action: ${action}`);
       }
@@ -711,38 +830,141 @@ export class GeminiService {
       (topTasks.length > 0 ? topTasks.map((t, i) => `   ${i + 1}. ${t.title}`).join('\n') : '   1. Memulai hari tepat waktu & Sholat Subuh\n   2. Eksekusi operasional utama\n   3. Olahraga sore');
   }
 
+  buildTodaySchedule(speakerInfo) {
+    const todayStr = formatIndoDate();
+    const todaySchedule = this.routineManager ? this.routineManager.getScheduleToday() : [];
+    const remindersText = this.reminderManager ? this.reminderManager.getTodayRemindersSummary() : 'Tidak ada pengingat khusus.';
+
+    const scheduleList = todaySchedule.map(s => {
+      let icon = '📅';
+      if (s.status === 'completed') icon = '✅';
+      else if (s.status === 'rescheduled') icon = '⏳';
+      return `  • [${s.time} WIB] ${s.name} (${icon} ${s.status.toUpperCase()})`;
+    }).join('\n');
+
+    return `📅 *JADWAL AKTIVITAS HARI INI — ${todayStr}*\n\n` +
+      `🕒 *Rutinitas Terjadwal:*\n${scheduleList}\n\n` +
+      `🔔 *Pengingat Khusus (Smart Reminders):*\n${remindersText}\n\n` +
+      `_Ketik *"Apa yang harus saya lakukan sekarang?"* untuk mendapatkan arahan taktis berdasarkan waktu saat ini._`;
+  }
+
+  buildUnfinishedItems(speakerInfo) {
+    const owner = speakerInfo.role === 'partner' ? 'partner' : 'owner';
+    const pendingTasks = this.taskManager ? this.taskManager.getPendingTasks(owner) : [];
+    const compliance = this.routineManager ? this.routineManager.getRoutineComplianceReport() : { uncompletedItems: [] };
+
+    const taskRows = pendingTasks.map((t, idx) =>
+      `  ${idx + 1}. [${t.priority.toUpperCase()}] *${t.title}* (Kategori: ${t.category}${t.dueDate ? `, Tenggat: ${t.dueDate}` : ''})`
+    ).join('\n') || '  (Semua pekerjaan utama sudah tuntas! ✅)';
+
+    const uncompletedRoutines = compliance.uncompletedItems.map(a =>
+      `  • [${a.time} WIB] ${a.name}`
+    ).join('\n') || '  (Semua rutinitas hari ini telah diselesaikan! ✅)';
+
+    return `📌 *DAFTAR TUGAS & AKTIVITAS YANG BELUM SELESAI*\n\n` +
+      `💼 *Pekerjaan / Tasks yang Masih Tertunda (${pendingTasks.length} tugas):*\n${taskRows}\n\n` +
+      `⏰ *Rutinitas Hari Ini yang Belum Dikonfirmasi:*\n${uncompletedRoutines}\n\n` +
+      `💡 *Saran NEX:* Tuntaskan pekerjaan berlabel *[HIGH]* terlebih dahulu sebelum menangani hal-hal kecil.`;
+  }
+
   buildWeeklyEvaluation(speakerInfo) {
     const owner = speakerInfo.role === 'partner' ? 'partner' : 'owner';
     const weeklyRecap = this.financeManager.getWeeklyRecap(owner);
     const goalsSummary = this.goalTracker.getActiveGoalsSummary(owner);
     const pendingTasks = this.taskManager ? this.taskManager.getPendingTasks(owner) : [];
+    const completedTasks = this.taskManager ? this.taskManager.getCompletedToday(owner) : [];
     const compliance = this.routineManager.getRoutineComplianceReport();
+    const reminderStats = this.reminderManager ? this.reminderManager.getEvaluationStats() : { complianceRate: '100%', completed: 0, total: 0 };
 
-    return `📊 *EVALUASI MINGGUAN KELUARGA & BISNIS (${weeklyRecap.periodLabel})*\n\n` +
-      `1. *Konsistensi Rutinitas & Kepatuhan:* ${compliance.complianceRate} (${compliance.totalCompleted} aktivitas berhasil diselesaikan)\n` +
-      `2. *Perkembangan Target:*\n${goalsSummary}\n\n` +
-      `3. *Produktivitas Pekerjaan:*\n` +
-      `   • Total pekerjaan masih tertunda: ${pendingTasks.length} tugas\n\n` +
-      `4. *Kondisi Keuangan Aktual (SPS):*\n` +
-      `   • Total Pemasukan Mingguan : ${formatRupiah(weeklyRecap.income)}\n` +
-      `   • Total Pengeluaran       : ${formatRupiah(weeklyRecap.expense)}\n` +
-      `   • Net Cashflow Mingguan   : ${formatRupiah(weeklyRecap.net)} (${weeklyRecap.net >= 0 ? 'Surplus 🟢' : 'Defisit 🔴'})\n` +
-      `   • Rata-rata Beban/Hari    : ${formatRupiah(weeklyRecap.dailyAvg)}\n\n` +
-      `5. *Rekomendasi Perbaikan:* Pertahankan surplus kas, lunasi tugas yang paling lama tertunda, dan jaga komitmen olahraga 4x seminggu.`;
+    const reportText =
+      `📊 *WEEKLY PERFORMANCE REPORT (${weeklyRecap.periodLabel})*\n` +
+      `============================================\n\n` +
+      `### A. PENCAPAIAN\n` +
+      `• Menyelesaikan ${compliance.totalCompleted} aktivitas rutinitas harian (Kepatuhan: ${compliance.complianceRate}).\n` +
+      `• Pengingat aktivitas terselesaikan: ${reminderStats.completed} pengingat (Kepatuhan pengingat: ${reminderStats.complianceRate}).\n` +
+      `• Pekerjaan bisnis & pribadi tuntas minggu ini tercatat di database.\n\n` +
+      `### B. TARGET DAN REALISASI\n` +
+      `${goalsSummary}\n\n` +
+      `### C. PRODUKTIVITAS & MANAJEMEN WAKTU\n` +
+      `• Kepatuhan Rutinitas Harian: *${compliance.complianceRate}* (${compliance.totalCompleted} dari ${compliance.totalScheduled} aktivitas terlaksana).\n` +
+      `• Pekerjaan Pending: ${pendingTasks.length} tugas masih dalam antrean kerja.\n\n` +
+      `### D. KEUANGAN (SPS SINGLE SOURCE OF TRUTH)\n` +
+      `• Total Pemasukan Mingguan : *${formatRupiah(weeklyRecap.income)}*\n` +
+      `• Total Pengeluaran       : *${formatRupiah(weeklyRecap.expense)}*\n` +
+      `• Net Cashflow Mingguan   : *${formatRupiah(weeklyRecap.net)}* (${weeklyRecap.net >= 0 ? 'Surplus 🟢' : 'Defisit 🔴'})\n` +
+      `• Rata-rata Beban Harian  : *${formatRupiah(weeklyRecap.dailyAvg)}*\n\n` +
+      `### E. HAL YANG PERLU DIPERBAIKI\n` +
+      `• Hindari menunda-nunda tugas berprioritas tinggi hingga larut malam.\n` +
+      `• Disiplin mencatat setiap pengeluaran kecil agar tidak ada celah cashflow yang bocor.\n\n` +
+      `### F. HAL YANG PERLU DITINGKATKAN\n` +
+      `• Pertahankan konsistensi olahraga minimal 4x seminggu untuk menjaga stamina dan kejernihan pikiran.\n` +
+      `• Tingkatkan follow-up calon klien KEYNEX di awal pekan (Senin-Selasa).\n\n` +
+      `### G. PRIORITAS MINGGU BERIKUTNYA\n` +
+      `1. Eksekusi follow-up dan order klien KEYNEX.\n` +
+      `2. Alokasikan tabungan rencana dari surplus kas minggu ini.\n` +
+      `3. Jaga ketertiban salat 5 waktu berjamaah dan asupan fisik optimal.`;
+
+    // Asynchronously save performance report to Google Spreadsheet
+    if (this.googleSheetsService) {
+      this.googleSheetsService.appendPerformanceReport({
+        periodType: 'weekly',
+        periodKey: weeklyRecap.periodLabel,
+        achievements: `${compliance.totalCompleted} rutinitas selesai (${compliance.complianceRate})`,
+        targetsReconciliation: goalsSummary.slice(0, 200),
+        productivity: `Kepatuhan: ${compliance.complianceRate}, Pending tasks: ${pendingTasks.length}`,
+        finances: `In: ${formatRupiah(weeklyRecap.income)} | Out: ${formatRupiah(weeklyRecap.expense)} | Net: ${formatRupiah(weeklyRecap.net)}`,
+        improvements: 'Disiplin eksekusi prioritas & pencatatan keuangan',
+        nextPriorities: 'Follow-up order KEYNEX, tabungan rencana, olahraga',
+        rawReport: reportText
+      }).catch(err => console.warn('[GeminiService] Failed to sync weekly report to SPS:', err.message));
+    }
+
+    return reportText;
   }
 
   buildMonthlyEvaluation(speakerInfo) {
     const owner = speakerInfo.role === 'partner' ? 'partner' : 'owner';
     const monthlyRecap = this.financeManager.getMonthlyRecap(owner);
     const goalsSummary = this.goalTracker.getActiveGoalsSummary(owner);
+    const pendingTasks = this.taskManager ? this.taskManager.getPendingTasks(owner) : [];
+    const compliance = this.routineManager.getRoutineComplianceReport();
 
-    return `🗓️ *EVALUASI BULANAN (${monthlyRecap.monthLabel})*\n\n` +
-      `1. *Kondisi Keuangan Berdasarkan SPS (SSOT):*\n` +
-      `   • Total Pendapatan / Inflow : ${formatRupiah(monthlyRecap.income)}\n` +
-      `   • Total Pengeluaran         : ${formatRupiah(monthlyRecap.expense)}\n` +
-      `   • Tabungan Disimpan         : ${formatRupiah(monthlyRecap.savings)} (Rasio: ${monthlyRecap.savingsRatio})\n` +
-      `   • Net Cashflow              : ${formatRupiah(monthlyRecap.net)} (${monthlyRecap.net >= 0 ? 'Surplus 🟢' : 'Defisit 🔴'})\n\n` +
-      `2. *Pencapaian Target Bulanan:*\n${goalsSummary}\n\n` +
-      `3. *Rencana Periode Bulan Depan:* Alokasikan minimal 20-30% keuntungan bisnis ke tabungan rencana, tingkatkan margin penjualan, dan pertahankan disiplin kesehatan.`;
+    const reportText =
+      `🗓️ *MONTHLY PERFORMANCE REPORT (${monthlyRecap.monthLabel})*\n` +
+      `============================================\n\n` +
+      `1. *Pencapaian Target Bulanan:*\n${goalsSummary}\n\n` +
+      `2. *Produktivitas & Konsistensi Rutinitas:*\n` +
+      `   • Rata-rata Kepatuhan Harian: *${compliance.complianceRate}*\n` +
+      `   • Total Tugas Masih Tertunda: *${pendingTasks.length} tugas*\n\n` +
+      `3. *Kondisi Keuangan Berdasarkan SPS (SSOT):*\n` +
+      `   • Total Pendapatan Inflow : *${formatRupiah(monthlyRecap.income)}*\n` +
+      `   • Total Pengeluaran       : *${formatRupiah(monthlyRecap.expense)}*\n` +
+      `   • Tabungan Disimpan       : *${formatRupiah(monthlyRecap.savings)}* (Rasio Tabungan: *${monthlyRecap.savingsRatio}*)\n` +
+      `   • Net Cashflow Bulanan    : *${formatRupiah(monthlyRecap.net)}* (${monthlyRecap.net >= 0 ? 'Surplus 🟢' : 'Defisit 🔴'})\n\n` +
+      `4. *Perkembangan Bisnis & Usaha (KEYNEX & Ternak):*\n` +
+      `   • Pertahankan perputaran modal bisnis terpisah dari pengeluaran rumah tangga.\n` +
+      `   • Salurkan laba bersih ke reinvestasi atau tabungan rencana masa depan.\n\n` +
+      `5. *Kendala Utama & Hal yang Perlu Ditingkatkan:*\n` +
+      `   • Perketat batas pengeluaran konsumtif di akhir pekan.\n` +
+      `   • Tingkatkan konsistensi rutinitas olahraga sore dan istirahat malam teratur.\n\n` +
+      `6. *Rencana & Sasaran Bulan Berikutnya:*\n` +
+      `   • Naikkan target omzet bisnis KEYNEX minimal 15-20%.\n` +
+      `   • Target rasio tabungan stabil di atas 25% dari total arus kas masuk.`;
+
+    if (this.googleSheetsService) {
+      this.googleSheetsService.appendPerformanceReport({
+        periodType: 'monthly',
+        periodKey: monthlyRecap.monthLabel,
+        achievements: `Omzet Inflow: ${formatRupiah(monthlyRecap.income)}, Tabungan: ${formatRupiah(monthlyRecap.savings)}`,
+        targetsReconciliation: goalsSummary.slice(0, 200),
+        productivity: `Kepatuhan Rutinitas: ${compliance.complianceRate}`,
+        finances: `In: ${formatRupiah(monthlyRecap.income)} | Out: ${formatRupiah(monthlyRecap.expense)} | Net: ${formatRupiah(monthlyRecap.net)}`,
+        improvements: 'Kendala biaya konsumtif & ritme istirahat',
+        nextPriorities: 'Target omzet +20%, rasio tabungan > 25%',
+        rawReport: reportText
+      }).catch(err => console.warn('[GeminiService] Failed to sync monthly report to SPS:', err.message));
+    }
+
+    return reportText;
   }
 }

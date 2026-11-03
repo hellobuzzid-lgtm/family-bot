@@ -4,6 +4,7 @@ import { FinanceManager } from './services/financeManager.js';
 import { GoalTracker } from './services/goalTracker.js';
 import { RoutineManager } from './services/routineManager.js';
 import { TaskManager } from './services/taskManager.js';
+import { ReminderManager } from './services/reminderManager.js';
 import { GoogleSheetsService } from './services/googleSheetsService.js';
 import { MasterPromptBuilder } from './core/masterPrompt.js';
 import { GeminiService } from './services/geminiService.js';
@@ -33,6 +34,7 @@ async function main() {
     const goalTracker = new GoalTracker(googleSheetsService);
     const routineManager = new RoutineManager(googleSheetsService);
     const taskManager = new TaskManager();
+    const reminderManager = new ReminderManager(googleSheetsService, routineManager, taskManager, goalTracker);
 
     // 2. Initialize prompt builder
     const promptBuilder = new MasterPromptBuilder(
@@ -40,7 +42,8 @@ async function main() {
       financeManager,
       goalTracker,
       routineManager,
-      taskManager
+      taskManager,
+      reminderManager
     );
 
     // 3. Initialize AI reasoning service
@@ -50,7 +53,9 @@ async function main() {
       financeManager,
       goalTracker,
       routineManager,
-      taskManager
+      taskManager,
+      reminderManager,
+      googleSheetsService
     );
 
     // 4. Initialize WhatsApp Bot Engine
@@ -63,7 +68,8 @@ async function main() {
       financeManager,
       goalTracker,
       taskManager,
-      geminiService
+      geminiService,
+      reminderManager
     );
 
     // 6. Start WhatsApp Bot

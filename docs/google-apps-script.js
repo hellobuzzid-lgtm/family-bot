@@ -136,6 +136,26 @@ function doPost(e) {
       return ContentService.createTextOutput(JSON.stringify({ status: 'success', message: 'Goal recorded' })).setMimeType(ContentService.MimeType.JSON);
     }
 
+    // 7. LAPORAN EVALUASI PERFORMA MINGGUAN & BULANAN (Section 9 & 10)
+    if (data.action === 'PERFORMANCE_REPORT') {
+      var sheetPerf = getOrCreateSheet(ss, 'Laporan Evaluasi Performa', [
+        'Timestamp', 'Periode', 'Tipe (Mingguan/Bulanan)', 'Pencapaian', 'Target vs Realisasi', 'Produktivitas', 'Keuangan', 'Hal Perlu Ditingkatkan', 'Prioritas Berikutnya'
+      ], '#4A148C');
+      var r = data.report || {};
+      sheetPerf.appendRow([
+        new Date(),
+        r.periodKey || Utilities.formatDate(new Date(), 'Asia/Jakarta', 'yyyy-MM-dd'),
+        (r.periodType || 'weekly').toUpperCase(),
+        r.achievements || '',
+        r.targetsReconciliation || '',
+        r.productivity || '',
+        r.finances || '',
+        r.improvements || '',
+        r.nextPriorities || ''
+      ]);
+      return ContentService.createTextOutput(JSON.stringify({ status: 'success', message: 'Performance report recorded' })).setMimeType(ContentService.MimeType.JSON);
+    }
+
     return ContentService.createTextOutput(JSON.stringify({ status: 'ignored' })).setMimeType(ContentService.MimeType.JSON);
   } catch (error) {
     return ContentService.createTextOutput(JSON.stringify({ status: 'error', error: error.toString() })).setMimeType(ContentService.MimeType.JSON);

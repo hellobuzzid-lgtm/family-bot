@@ -266,7 +266,11 @@ export class RoutineManager {
     if (!idOrName) return null;
     this.ensureToday();
     const clean = String(idOrName).toLowerCase().trim();
-    return this.data.scheduleToday.find(a => a.id === idOrName || a.name.toLowerCase().includes(clean));
+    return this.data.scheduleToday.find(a =>
+      a.id === idOrName ||
+      a.id.toLowerCase().includes(clean) ||
+      a.name.toLowerCase().includes(clean)
+    );
   }
 
   addCustomActivity({ name, time, duration = 30, priority = 'medium', frequency = 'daily', notes = '' }) {

@@ -166,6 +166,31 @@ export class GoogleSheetsService {
   }
 
   /**
+   * Append Weekly or Monthly Performance Report to Google Sheets (SSOT evaluation history)
+   */
+  async appendPerformanceReport(reportData) {
+    if (!this.isConfigured()) return { success: false, reason: 'NOT_CONFIGURED' };
+
+    const payload = {
+      action: 'PERFORMANCE_REPORT',
+      timestamp: getNow().format('YYYY-MM-DD HH:mm:ss'),
+      report: {
+        periodType: reportData.periodType || 'weekly', // 'weekly' | 'monthly'
+        periodKey: reportData.periodKey || getNow().format('YYYY-[W]WW'),
+        achievements: reportData.achievements || '',
+        targetsReconciliation: reportData.targetsReconciliation || '',
+        productivity: reportData.productivity || '',
+        finances: reportData.finances || '',
+        improvements: reportData.improvements || '',
+        nextPriorities: reportData.nextPriorities || '',
+        rawReport: reportData.rawReport || ''
+      }
+    };
+
+    return this.sendPayload(payload);
+  }
+
+  /**
    * Read financial data directly from Google Spreadsheet (Single Source of Truth)
    */
   async fetchSpreadsheetFinances(source = null, month = null) {

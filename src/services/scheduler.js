@@ -3,13 +3,14 @@ import { config } from '../config.js';
 import { getNow } from '../utils/formatters.js';
 
 export class Scheduler {
-  constructor(whatsappBot, routineManager, financeManager, goalTracker, taskManager = null, geminiService = null) {
+  constructor(whatsappBot, routineManager, financeManager, goalTracker, taskManager = null, geminiService = null, reminderManager = null) {
     this.whatsappBot = whatsappBot;
     this.routineManager = routineManager;
     this.financeManager = financeManager;
     this.goalTracker = goalTracker;
     this.taskManager = taskManager;
     this.geminiService = geminiService;
+    this.reminderManager = reminderManager;
     this.tasks = [];
     this.lastNotifiedPrayers = new Set();
   }
@@ -22,6 +23,10 @@ export class Scheduler {
     this.taskManager = taskManager;
   }
 
+  setReminderManager(reminderManager) {
+    this.reminderManager = reminderManager;
+  }
+
   start() {
     if (!config.autonomousReminders) {
       console.log('[Scheduler] Autonomous reminders disabled in config.');
@@ -30,11 +35,12 @@ export class Scheduler {
 
     console.log(`[Scheduler] Starting Autonomous Life Assistant Scheduler (Timezone: ${config.timezone})...`);
 
-    // 1. Check prayer times every minute (Subuh, Dzuhur, Ashar, Maghrib, Isya)
-    const prayerCheckTask = cron.schedule('* * * * *', async () => {
+    // 1. Check prayer times & smart custom reminders every minute (Section 2 & 3)
+    const minuteCheckTask = cron.schedule('* * * * *', async () => {
       await this.checkPrayerTimes();
+      await this.checkCustomReminders();
     }, { timezone: config.timezone });
-    this.tasks.push(prayerCheckTask);
+    this.tasks.push(minuteCheckTask);
 
     // 2. DAILY BRIEFING (06:30 WIB) — Section 7
     const morningBriefingTask = cron.schedule('30 6 * * *', async () => {
@@ -170,6 +176,31 @@ export class Scheduler {
 
     if (this.lastNotifiedPrayers.size > 20) {
       this.lastNotifiedPrayers.clear();
+    }
+  }
+
+  async checkCustomReminders() {
+    if (!this.reminderManager) return;
+    try {
+      const now = getNow();
+      const nowTime = now.format('HH:mm');
+      const nowDate = now.format('YYYY-MM-DD');
+
+      const dueReminders = this.reminderManager.getRemindersDueNow(nowTime, nowDate);
+      for (const rem of dueReminders) {
+        console.log(`[Scheduler] ⏰ Dispatching Reminder: "${rem.activity}" (${rem.dueTime} WIB)`);
+        this.reminderManager.markNotified(rem.id, rem.owner);
+
+        const promptMsg =
+          `⏰ *WAKTU AKTIVITAS TIBA (${rem.dueTime} WIB)*\n\n` +
+          `Aktivitas: *${rem.activity}*\n\n` +
+          `Apakah kamu sudah melakukan aktivitas ini hari ini?\n` +
+          `👉 _Ketik *Sudah* jika sudah selesai, atau *Belum* jika belum dilakukan._`;
+
+        await this.sendReminder(promptMsg);
+      }
+    } catch (err) {
+      console.error('[Scheduler] Error checking custom reminders:', err.message);
     }
   }
 
