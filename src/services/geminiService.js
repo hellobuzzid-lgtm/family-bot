@@ -435,6 +435,11 @@ export class GeminiService {
       return null;
     }
 
+    // 0.1 Safety: ignore reminder / schedule / alarm requests
+    if (/(?:^|\s)(?:ingatkan|ingetin|remind|jadwalkan|masukkan\s*ke\s*jadwal|bikin\s*pengingat|alarm|pengingat|jadwal|agenda)\b/i.test(clean)) {
+      return null;
+    }
+
     // 1. Check if user is asking to RESET / CLEAR SPS
     const isResetSPSIntent = /(?:^|\s|[^a-zA-Z0-9])(?:hapus|reset|kosongkan|bersihkan|clear)\s*(?:semua\s*)?(?:data\s*)?(?:sps|spreadsheet|transaksi\s*keuangan|riwayat\s*transaksi)(?:$|\s|[^a-zA-Z0-9])/i.test(clean);
     if (isResetSPSIntent) {

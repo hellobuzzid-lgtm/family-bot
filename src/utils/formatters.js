@@ -114,10 +114,9 @@ export function extractAmount(text) {
     return { raw: rawNumMatch[0], value: parseInt(rawNumMatch[1], 10) || 0, index: rawNumMatch.index };
   }
 
-  // 6. Direct numeric string fallback: '2000', '500'
-  const digitsOnly = clean.replace(/[^0-9]/g, '');
-  if (digitsOnly.length > 0 && digitsOnly.length <= 15) {
-    const parsed = parseInt(digitsOnly, 10);
+  // 6. Direct numeric string fallback: only if the string is essentially just a number (e.g. '2000', '500', '50000')
+  if (/^\s*(?:rp\.?\s*)?\d+\s*$/i.test(clean)) {
+    const parsed = parseInt(clean.replace(/[^0-9]/g, ''), 10);
     if (!isNaN(parsed) && parsed > 0) {
       return { raw: str, value: parsed, index: 0 };
     }
