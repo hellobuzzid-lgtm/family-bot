@@ -241,6 +241,7 @@ function doGet(e) {
       var jenisStr = String(row[3] || '').toLowerCase().trim();
       var isIncome = jenisStr.includes('pemasukan') || jenisStr === 'income';
       var isExpense = jenisStr.includes('pengeluaran') || jenisStr === 'expense';
+      var isSavings = jenisStr.includes('tabung') || jenisStr.includes('darurat') || jenisStr === 'savings';
       var akunStr = String(row[7] || '').toLowerCase().trim();
       var isBiz = akunStr.includes('bisnis') || akunStr.includes('business');
 
@@ -249,12 +250,17 @@ function doGet(e) {
       var catStr = String(row[5] || '').trim();
       var txId = String(row[9] || '').trim();
 
+      var txType = 'expense';
+      if (isIncome) txType = 'income';
+      else if (isSavings) txType = 'savings';
+      else txType = 'expense';
+
       var txObj = {
         id: txId,
         timestamp: row[0],
         date: dateStr,
         time: String(row[2] || ''),
-        type: isIncome ? 'income' : 'expense',
+        type: txType,
         amount: amt,
         category: catStr,
         description: descStr,

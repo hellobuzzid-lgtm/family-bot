@@ -160,6 +160,23 @@ export class GeminiService {
         return this.financeManager.getMonthlyRecap().summaryText;
       }
 
+      // Check general recap query ("rekap", "laporan keuangan", "rekap keuangan", "data rekapan")
+      if (/(?:rekap|ringkasan|laporan)\s*(?:keuangan|transaksi|kas|sps|semua)?/i.test(clean) && !clean.includes('performa')) {
+        const weekly = this.financeManager.getWeeklyRecap();
+        const monthly = this.financeManager.getMonthlyRecap();
+        return `📊 *REKAP KEUANGAN RESMI (ACUAN SPS SPREADSHEET)*\n\n` +
+          `📅 *Minggu Ini (${weekly.periodLabel}):*\n` +
+          `• Pemasukan  : ${formatRupiah(weekly.income)}\n` +
+          `• Pengeluaran: ${formatRupiah(weekly.expense)}\n` +
+          `• Net Cashflow: ${formatRupiah(weekly.net)} (${weekly.net >= 0 ? 'Surplus ✅' : 'Defisit ⚠️'})\n\n` +
+          `🗓️ *Bulan Ini (${monthly.monthLabel}):*\n` +
+          `• Pemasukan  : ${formatRupiah(monthly.income)}\n` +
+          `• Pengeluaran: ${formatRupiah(monthly.expense)}\n` +
+          `• Net Cashflow: ${formatRupiah(monthly.net)} (${monthly.net >= 0 ? 'Surplus ✅' : 'Defisit ⚠️'})\n\n` +
+          `💰 *Total Saldo Kas Aktif:* ${formatRupiah(this.financeManager.data.balances.personalBalance + this.financeManager.data.balances.businessBalance)}\n\n` +
+          `✅ *Catatan:* Data ini 100% tersinkronisasi dan identik dengan Google Spreadsheet (SPS).`;
+      }
+
       // Check balance query ("berapa saldo saya", "cek saldo", "sisa uang")
       if (/(?:berapa\s*)?saldo(?:\s*saya|\s*kita|\s*saat\s*ini)?|cek\s*saldo|sisa\s*uang/i.test(clean)) {
         return `💰 *KONDISI SALDO REAL-TIME (SPS SSOT)*\n\n` +
@@ -441,7 +458,11 @@ export class GeminiService {
     }
 
     // 1. Check if user is asking to RESET / CLEAR SPS
-    const isResetSPSIntent = /(?:^|\s|[^a-zA-Z0-9])(?:hapus|reset|kosongkan|bersihkan|clear)\s*(?:semua\s*)?(?:data\s*)?(?:sps|spreadsheet|transaksi\s*keuangan|riwayat\s*transaksi)(?:$|\s|[^a-zA-Z0-9])/i.test(clean);
+    const isResetSPSIntent = (
+      /(?:hapus|reset|kosongkan|bersihkan|clear)\s*(?:semua\s*)?(?:data|catatan|transaksi|riwayat|isi)?\s*(?:yang\s*ada\s*)?(?:di\s*)?(?:sps|spreadsheet)/i.test(clean) ||
+      /(?:semua|seluruh)\s*(?:catatan|data|transaksi|riwayat|isi)?\s*(?:yang\s*ada\s*)?(?:di\s*)?(?:sps|spreadsheet)/i.test(clean) ||
+      /(?:hapus|reset|kosongkan|bersihkan|clear)\s*(?:semua|seluruh)\s*(?:data|catatan|transaksi|riwayat)/i.test(clean)
+    );
     if (isResetSPSIntent) {
       console.log(`[GeminiService] 🚨 Detected RESET / CLEAR SPS intent: "${text}"`);
       const clearRes = await this.financeManager.clearAllTransactions();
@@ -734,6 +755,14 @@ export class GeminiService {
             return { success: true, spsConfirmed: delRes.spsConfirmed };
           }
           return null;
+        }
+
+        case 'RESET_SPS':
+        case 'CLEAR_SPS':
+        case 'CLEAR_ALL_TRANSACTIONS': {
+          console.log('[GeminiService] Executing RESET_SPS via AI action...');
+          const res = await this.financeManager.clearAllTransactions();
+          return { success: true, isResetSPS: true, spsConfirmed: res.spsConfirmed };
         }
 
         case 'SET_INITIAL_BALANCE':

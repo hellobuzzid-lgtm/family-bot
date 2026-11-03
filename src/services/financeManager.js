@@ -889,52 +889,35 @@ ${recentTxList}
       const remoteTxs = res.data.transactions || [];
       console.log(`[FinanceManager] 📥 Synced with Google Spreadsheet (SPS). Remote transactions found: ${res.data.totalTransactions}`);
 
-      let addedCount = 0;
-      let updatedCount = 0;
-
+      // SPS is Single Source of Truth (SSOT). Reconstruct local active transactions to mirror SPS exactly.
+      const syncedTxs = [];
       for (const rTx of remoteTxs) {
         if (!rTx.id) continue;
-        const existingIdx = this.data.transactions.findIndex(t => t.id === rTx.id);
         const normOwner = (String(rTx.owner || '').toLowerCase().includes('partner') || String(rTx.owner || '').toLowerCase().includes('istri')) ? 'partner' : 'owner';
 
-        if (existingIdx === -1) {
-          this.data.transactions.push({
-            id: rTx.id,
-            date: rTx.date ? `${rTx.date} ${rTx.time || '12:00:00'}` : getNow().format('YYYY-MM-DD HH:mm:ss'),
-            type: rTx.type || 'expense',
-            amount: Number(rTx.amount) || 0,
-            category: rTx.category || 'Umum',
-            description: rTx.description || '',
-            isBusiness: Boolean(rTx.isBusiness),
-            owner: normOwner,
-            status: 'active',
-            createdAt: rTx.date ? `${rTx.date} ${rTx.time || '12:00:00'}` : getNow().format('YYYY-MM-DD HH:mm:ss'),
-            updatedAt: getNow().format('YYYY-MM-DD HH:mm:ss'),
-            correctionHistory: []
-          });
-          addedCount++;
-        } else {
-          const cur = this.data.transactions[existingIdx];
-          if (cur.amount !== rTx.amount || cur.type !== rTx.type) {
-            cur.amount = Number(rTx.amount) || cur.amount;
-            cur.type = rTx.type || cur.type;
-            cur.description = rTx.description || cur.description;
-            cur.category = rTx.category || cur.category;
-            cur.owner = normOwner;
-            cur.updatedAt = getNow().format('YYYY-MM-DD HH:mm:ss');
-            updatedCount++;
-          }
-        }
+        syncedTxs.push({
+          id: rTx.id,
+          date: rTx.date ? `${rTx.date} ${rTx.time || '12:00:00'}` : getNow().format('YYYY-MM-DD HH:mm:ss'),
+          type: rTx.type || 'expense',
+          amount: Number(rTx.amount) || 0,
+          category: rTx.category || 'Umum',
+          description: rTx.description || '',
+          isBusiness: Boolean(rTx.isBusiness),
+          owner: normOwner,
+          status: 'active',
+          createdAt: rTx.date ? `${rTx.date} ${rTx.time || '12:00:00'}` : getNow().format('YYYY-MM-DD HH:mm:ss'),
+          updatedAt: getNow().format('YYYY-MM-DD HH:mm:ss'),
+          correctionHistory: []
+        });
       }
 
+      this.data.transactions = syncedTxs;
       this.recalculateAllBalances();
       this.saveData();
 
       return {
         success: true,
         data: res.data,
-        addedCount,
-        updatedCount,
         totalLocal: this.data.transactions.length
       };
     }

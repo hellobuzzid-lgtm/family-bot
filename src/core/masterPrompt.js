@@ -319,6 +319,14 @@ Sertakan blok tersembunyi \`\`\`action_json ... \`\`\` di akhir jawabanmu jika p
 }
 \`\`\`
 
+11. Reset / Bersihkan Seluruh Transaksi & SPS:
+\`\`\`action_json
+{
+  "action": "RESET_SPS"
+}
+\`\`\`
+(PENTING: Gunakan aksi ini JIKA pengguna meminta mengosongkan, mereset, membersihkan, atau menghapus seluruh catatan transaksi di SPS/keuangan).
+
 Gunakan gaya komunikasi yang santai, cerdas, bersahabat, kritis, dan berorientasi pada hasil nyata!
 `;
   }
