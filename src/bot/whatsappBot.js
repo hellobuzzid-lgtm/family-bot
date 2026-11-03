@@ -1,7 +1,8 @@
 import makeWASocket, {
   useMultiFileAuthState,
   DisconnectReason,
-  fetchLatestBaileysVersion
+  fetchLatestBaileysVersion,
+  Browsers
 } from '@whiskeysockets/baileys';
 import pino from 'pino';
 import qrcode from 'qrcode-terminal';
@@ -22,6 +23,9 @@ export class WhatsAppBot {
     this.botSentMessageIds = new Set();
     this.targetGroupJid = config.targetGroupJid || null;
     this.chatHistories = new Map(); // Map of jid -> array of recent messages
+    this.pairingTimeout = null;
+    this.reconnectTimeout = null;
+    this.isPairingRequested = false;
   }
 
   trackSentMessageId(id) {
@@ -34,6 +38,17 @@ export class WhatsAppBot {
   }
 
   async start() {
+    // Clear any active timers from previous start
+    if (this.pairingTimeout) {
+      clearTimeout(this.pairingTimeout);
+      this.pairingTimeout = null;
+    }
+    if (this.reconnectTimeout) {
+      clearTimeout(this.reconnectTimeout);
+      this.reconnectTimeout = null;
+    }
+    this.isPairingRequested = false;
+
     // If requested via env, reset auth directory cleanly
     if (process.env.RESET_AUTH === 'true') {
       console.log('[WhatsAppBot] RESET_AUTH=true detected. Clearing authDir before start...');
@@ -47,11 +62,12 @@ export class WhatsAppBot {
       }
     }
 
-    if (this.sock?.ev) {
+    if (this.sock) {
       try {
         this.sock.ev.removeAllListeners('connection.update');
         this.sock.ev.removeAllListeners('creds.update');
         this.sock.ev.removeAllListeners('messages.upsert');
+        this.sock.end(undefined);
       } catch (_) {}
     }
 
@@ -61,14 +77,12 @@ export class WhatsAppBot {
 
     console.log(`[WhatsAppBot] Starting AI Life Partner WhatsApp Socket (Baileys v${version.join('.')})...`);
 
-    const browser = config.usePairingCode
-      ? ['Ubuntu', 'Chrome', '20.0.04']
-      : ['AI Life Partner', 'Chrome', '2.0.0'];
+    const browser = Browsers.ubuntu('Chrome');
 
     this.sock = makeWASocket({
       version,
       logger,
-      printQRInTerminal: !config.usePairingCode,
+      printQRInTerminal: false,
       auth: state,
       browser,
       generateHighQualityLinkPreview: true,
@@ -78,49 +92,57 @@ export class WhatsAppBot {
     this.sock.ev.on('creds.update', saveCreds);
 
     // Pairing Code Request for Headless / Railway environment
+    const cleanPhone = String(config.botPhone || '').replace(/\D/g, '');
     if (config.usePairingCode && !this.sock.authState.creds.registered) {
-      if (!config.botPhone) {
+      if (!cleanPhone) {
         console.warn('⚠️ [WhatsAppBot] BOT_PHONE belum diatur di .env / Variables!');
       } else {
-        let attempts = 0;
         const requestPairing = async () => {
-          if (this.sock?.authState?.creds?.registered) return;
+          if (this.sock?.authState?.creds?.registered || this.isPairingRequested) return;
           try {
-            attempts++;
-            console.log(`[WhatsAppBot] 📡 Meminta kode pairing WhatsApp untuk nomor ${config.botPhone} (Percobaan #${attempts})...`);
-            const code = await this.sock.requestPairingCode(config.botPhone);
+            this.isPairingRequested = true;
+            console.log(`[WhatsAppBot] 📡 Meminta kode pairing WhatsApp untuk nomor ${cleanPhone}...`);
+            const code = await this.sock.requestPairingCode(cleanPhone);
             console.log('\n======================================================');
             console.log(`🔑 KODE PAIRING WHATSAPP ANDA: 👉 ${code} 👈`);
             console.log('======================================================');
-            console.log(`📱 Nomor Bot: ${config.botPhone}`);
+            console.log(`📱 Nomor Bot: ${cleanPhone}`);
             console.log('Langkah Menautkan di WhatsApp HP Bot:');
-            console.log(`1. Buka aplikasi WhatsApp di HP nomor bot (${config.botPhone})`);
+            console.log(`1. Buka aplikasi WhatsApp di HP nomor bot (${cleanPhone})`);
             console.log('2. Buka Setelan (titik tiga) > Perangkat Tertaut > Tautkan Perangkat');
             console.log('3. Klik tautan teks kecil di bagian bawah: "Tautkan dengan nomor telepon saja"');
             console.log(`4. Masukkan kode 8 karakter di atas: ${code}`);
+            console.log('💡 ATAU: Anda juga bisa langsung SCAN QR CODE di terminal jika muncul!');
             console.log('======================================================\n');
           } catch (err) {
-            console.error(`❌ [WhatsAppBot] Gagal meminta kode pairing (Percobaan #${attempts}):`, err.message);
-            if (attempts < 5 && !this.sock?.authState?.creds?.registered) {
-              console.log('[WhatsAppBot] Mencoba meminta kode pairing kembali dalam 5 detik...');
-              setTimeout(requestPairing, 5000);
-            }
+            this.isPairingRequested = false;
+            console.error(`❌ [WhatsAppBot] Gagal meminta kode pairing:`, err.message);
           }
         };
 
-        setTimeout(requestPairing, 5000);
+        this.pairingTimeout = setTimeout(requestPairing, 4000);
       }
     }
 
     this.sock.ev.on('connection.update', (update) => {
       const { connection, lastDisconnect, qr } = update;
 
-      if (qr && !config.usePairingCode) {
-        console.log('\n📱 SCAN QR CODE DENGAN WHATSAPP:');
+      if (qr) {
+        console.log('\n======================================================');
+        console.log('📱 SCAN QR CODE DI BAWAH DENGAN WHATSAPP HP:');
+        console.log('======================================================');
         qrcode.generate(qr, { small: true });
+        console.log('💡 TIP: Buka WhatsApp > Perangkat Tertaut > Tautkan Perangkat > Arahkan kamera ke QR di atas!');
+        console.log('======================================================\n');
       }
 
       if (connection === 'close') {
+        if (this.pairingTimeout) {
+          clearTimeout(this.pairingTimeout);
+          this.pairingTimeout = null;
+        }
+        this.isPairingRequested = false;
+
         const statusCode = (lastDisconnect?.error instanceof Boom) ? lastDisconnect.error.output.statusCode : null;
         const errMsg = (lastDisconnect?.error?.message || '').toLowerCase();
         const isLoggedOut = statusCode === DisconnectReason.loggedOut || statusCode === 401 || statusCode === 403 || errMsg.includes('connection failure') || errMsg.includes('logged out') || errMsg.includes('bad session');
@@ -139,13 +161,19 @@ export class WhatsAppBot {
           } catch (cleanErr) {
             console.error('[WhatsAppBot] Gagal mereset authDir:', cleanErr.message);
           }
-          console.log('⏳ [WhatsAppBot] Memulai ulang socket dalam 3 detik untuk meminta kode pairing baru...');
-          setTimeout(() => this.start(), 3000);
+          console.log('⏳ [WhatsAppBot] Memulai ulang socket dalam 5 detik...');
+          this.reconnectTimeout = setTimeout(() => this.start(), 5000);
         } else {
-          console.log('[WhatsAppBot] Menyambung kembali dalam 3 detik...');
-          setTimeout(() => this.start(), 3000);
+          console.log('[WhatsAppBot] Menyambung kembali dalam 5 detik...');
+          this.reconnectTimeout = setTimeout(() => this.start(), 5000);
         }
       } else if (connection === 'open') {
+        if (this.pairingTimeout) {
+          clearTimeout(this.pairingTimeout);
+          this.pairingTimeout = null;
+        }
+        this.isPairingRequested = false;
+
         this.botJid = this.sock.user?.id ? this.sock.user.id.split(':')[0] + '@s.whatsapp.net' : null;
         this.botLid = this.sock.user?.lid ? this.sock.user.lid.split('@')[0] : null;
         this.botPhone = config.botPhone || (this.sock.user?.id ? this.sock.user.id.split(':')[0].replace(/\D/g, '') : null);
