@@ -623,7 +623,7 @@ ${recentTxList}
 `.trim();
   }
 
-  getWeeklyRecap(owner = 'owner') {
+  getWeeklyRecap(owner = null) {
     const now = getNow();
     const day = now.day();
     const diffToMonday = (day === 0 ? -6 : 1) - day;
@@ -633,7 +633,18 @@ ${recentTxList}
     const weekTxs = this.data.transactions.filter(t => {
       if (t.status !== 'active') return false;
       const d = dayjs(t.date);
-      return (d.isAfter(monday) || d.isSame(monday)) && (d.isBefore(sunday) || d.isSame(sunday)) && (!owner || t.owner === owner);
+      const inRange = (d.isAfter(monday) || d.isSame(monday)) && (d.isBefore(sunday) || d.isSame(sunday));
+      if (!inRange) return false;
+      if (!owner || owner === 'all') return true;
+      const tOwner = String(t.owner || '').toLowerCase();
+      const qOwner = String(owner).toLowerCase();
+      if (qOwner === 'owner' || qOwner.includes('bro')) {
+        return tOwner === 'owner' || tOwner.includes('owner') || tOwner.includes('bro');
+      }
+      if (qOwner === 'partner' || qOwner.includes('istri') || qOwner.includes('calon')) {
+        return tOwner === 'partner' || tOwner.includes('istri') || tOwner.includes('calon');
+      }
+      return tOwner === qOwner;
     });
 
     const income = weekTxs.filter(t => t.type === 'income').reduce((acc, c) => acc + c.amount, 0);
@@ -669,13 +680,24 @@ ${recentTxList}
     };
   }
 
-  getMonthlyRecap(owner = 'owner') {
+  getMonthlyRecap(owner = null) {
     const now = getNow();
     const currentMonthKey = now.format('YYYY-MM');
     const monthLabel = now.format('MMMM YYYY');
 
     const monthTxs = this.data.transactions.filter(t => {
-      return t.status === 'active' && t.date.startsWith(currentMonthKey) && (!owner || t.owner === owner);
+      if (t.status !== 'active') return false;
+      if (!t.date.startsWith(currentMonthKey)) return false;
+      if (!owner || owner === 'all') return true;
+      const tOwner = String(t.owner || '').toLowerCase();
+      const qOwner = String(owner).toLowerCase();
+      if (qOwner === 'owner' || qOwner.includes('bro')) {
+        return tOwner === 'owner' || tOwner.includes('owner') || tOwner.includes('bro');
+      }
+      if (qOwner === 'partner' || qOwner.includes('istri') || qOwner.includes('calon')) {
+        return tOwner === 'partner' || tOwner.includes('istri') || tOwner.includes('calon');
+      }
+      return tOwner === qOwner;
     });
 
     const income = monthTxs.filter(t => t.type === 'income').reduce((acc, c) => acc + c.amount, 0);
@@ -832,8 +854,57 @@ ${recentTxList}
     }
     const res = await this.googleSheetsService.fetchSpreadsheetFinances();
     if (res.success && res.data && res.data.status === 'success') {
-      console.log(`[FinanceManager] 📥 Synced with Google Spreadsheet (SPS). Total remote transactions: ${res.data.totalTransactions}`);
-      return { success: true, data: res.data };
+      const remoteTxs = res.data.transactions || [];
+      console.log(`[FinanceManager] 📥 Synced with Google Spreadsheet (SPS). Remote transactions found: ${res.data.totalTransactions}`);
+
+      let addedCount = 0;
+      let updatedCount = 0;
+
+      for (const rTx of remoteTxs) {
+        if (!rTx.id) continue;
+        const existingIdx = this.data.transactions.findIndex(t => t.id === rTx.id);
+        const normOwner = (String(rTx.owner || '').toLowerCase().includes('partner') || String(rTx.owner || '').toLowerCase().includes('istri')) ? 'partner' : 'owner';
+
+        if (existingIdx === -1) {
+          this.data.transactions.push({
+            id: rTx.id,
+            date: rTx.date ? `${rTx.date} ${rTx.time || '12:00:00'}` : getNow().format('YYYY-MM-DD HH:mm:ss'),
+            type: rTx.type || 'expense',
+            amount: Number(rTx.amount) || 0,
+            category: rTx.category || 'Umum',
+            description: rTx.description || '',
+            isBusiness: Boolean(rTx.isBusiness),
+            owner: normOwner,
+            status: 'active',
+            createdAt: rTx.date ? `${rTx.date} ${rTx.time || '12:00:00'}` : getNow().format('YYYY-MM-DD HH:mm:ss'),
+            updatedAt: getNow().format('YYYY-MM-DD HH:mm:ss'),
+            correctionHistory: []
+          });
+          addedCount++;
+        } else {
+          const cur = this.data.transactions[existingIdx];
+          if (cur.amount !== rTx.amount || cur.type !== rTx.type) {
+            cur.amount = Number(rTx.amount) || cur.amount;
+            cur.type = rTx.type || cur.type;
+            cur.description = rTx.description || cur.description;
+            cur.category = rTx.category || cur.category;
+            cur.owner = normOwner;
+            cur.updatedAt = getNow().format('YYYY-MM-DD HH:mm:ss');
+            updatedCount++;
+          }
+        }
+      }
+
+      this.recalculateAllBalances();
+      this.saveData();
+
+      return {
+        success: true,
+        data: res.data,
+        addedCount,
+        updatedCount,
+        totalLocal: this.data.transactions.length
+      };
     }
     return { success: false, error: res.error || 'Gagal sinkron dari spreadsheet' };
   }

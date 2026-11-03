@@ -273,18 +273,27 @@ export class GeminiService {
             const fallbackResult = await this.checkAndFallbackParseTransaction(messageText, speakerInfo);
             if (fallbackResult && fallbackResult.recorded) {
               actionsExecuted++;
-              executedTx = fallbackResult.transaction;
-              const typeLabel = executedTx.type === 'income'
-                ? (executedTx.isBusiness ? 'pemasukan bisnis' : 'pemasukan pribadi')
-                : (executedTx.isBusiness ? 'pengeluaran bisnis' : 'pengeluaran pribadi');
+              if (fallbackResult.isMulti && Array.isArray(fallbackResult.transactions)) {
+                executedTx = fallbackResult.transactions[0];
+                const listStr = fallbackResult.transactions.map((tx, idx) => {
+                  const typeLabel = tx.type === 'income' ? 'Pemasukan' : 'Pengeluaran';
+                  return `${idx + 1}. *${typeLabel}:* ${tx.description} sebesar *${formatRupiah(tx.amount)}* (ID: \`${tx.id}\`)`;
+                }).join('\n');
+                cleanText = `Sip, Bro! ${fallbackResult.transactions.length} transaksi berhasil dicatat dan disinkronkan ke Google Spreadsheet (SPS):\n\n${listStr}\n\nData transaksi telah tersimpan di database dan status SPS terkonfirmasi. ✅`;
+              } else {
+                executedTx = fallbackResult.transaction;
+                const typeLabel = executedTx.type === 'income'
+                  ? (executedTx.isBusiness ? 'pemasukan bisnis' : 'pemasukan pribadi')
+                  : (executedTx.isBusiness ? 'pengeluaran bisnis' : 'pengeluaran pribadi');
 
-              // If cleanText from Gemini contained wrong amount (e.g. Rp 2.000 or Rp 2), replace it with the real amount
-              if (/(?:rp\.?\s*)?(?:2\.?000|2)\b/i.test(cleanText) && executedTx.amount >= 10000) {
-                cleanText = cleanText
-                  .replace(/rp\.?\s*2\.?000\b/gi, formatRupiah(executedTx.amount))
-                  .replace(/rp\.?\s*2\b/gi, formatRupiah(executedTx.amount));
-              } else if (!cleanText.includes(formatRupiah(executedTx.amount))) {
-                cleanText = `Sip, Bro! Udah dicatat ${typeLabel}: *${executedTx.description}* sebesar *${formatRupiah(executedTx.amount)}*.\n\nData transaksi telah tersimpan di database dan disinkronkan ke Google Spreadsheet. ✅`;
+                // If cleanText from Gemini contained wrong amount (e.g. Rp 2.000 or Rp 2), replace it with the real amount
+                if (/(?:rp\.?\s*)?(?:2\.?000|2)\b/i.test(cleanText) && executedTx.amount >= 10000) {
+                  cleanText = cleanText
+                    .replace(/rp\.?\s*2\.?000\b/gi, formatRupiah(executedTx.amount))
+                    .replace(/rp\.?\s*2\b/gi, formatRupiah(executedTx.amount));
+                } else if (!cleanText.includes(formatRupiah(executedTx.amount))) {
+                  cleanText = `Sip, Bro! Udah dicatat ${typeLabel}: *${executedTx.description}* sebesar *${formatRupiah(executedTx.amount)}*.\n\nData transaksi telah tersimpan di database dan disinkronkan ke Google Spreadsheet. ✅`;
+                }
               }
             }
           } else if (executedTx && executedTx.amount >= 10000) {
@@ -437,68 +446,96 @@ export class GeminiService {
       return null;
     }
 
-    // 3. New Transaction Recording Intent
-    const extracted = extractAmount(clean);
-    const isIncome = /(?:pemasukan|masuk|jual|penjualan|gaji|gajian|terima|menerima|dapat|pendapatan|omzet|omset|cair|closing|untung|profit|bonus|thr|komisi|tf\s*masuk|transfer\s*masuk)/i.test(clean);
-    const isExpense = /(?:pengeluaran|keluar|beli|pembelian|bayar|pembayaran|biaya|ongkir|makan|minum|jajan|kopi|pulsa|listrik|bensin|sewa|tf\s*keluar|transfer\s*keluar|transfer\s*ke)/i.test(clean);
-    const isSavings = /(?:tabung|tabungan|nabung|simpan|darurat)/i.test(clean);
-    const isDebt = /(?:utang|hutang|pinjam|pinjaman|kasbon|bon|piutang|cicilan|angsuran)/i.test(clean);
-    const isExplicitRecord = /(?:catat|rekam|tulis|masukkan|tambah|input)/i.test(clean);
+    // 3. New Transaction Recording Intent (Supports Single or Multi-Transaction sentences)
+    const splitRegex = /(?:\r?\n|[,;]|\s+(?:dan|serta|sama)\s+)\s*(?=(?:pemasukan|pengeluaran|masuk|keluar|beli|jual|bayar|tabungan|nabung)\b)/i;
+    const rawClauses = text.split(splitRegex).map(c => c.trim()).filter(Boolean);
 
-    if (extracted && extracted.value > 0 && (isExplicitRecord || isIncome || isExpense || isSavings || isDebt)) {
-      let type = 'expense';
-      if (isSavings) type = 'savings';
-      else if (isDebt) type = 'debt_payment';
-      else if (isIncome && !clean.includes('bukan pemasukan')) type = 'income';
-      else if (isExpense) type = 'expense';
+    const parseSingleClause = async (clauseText) => {
+      const cClean = clauseText.toLowerCase().trim();
+      const extracted = extractAmount(cClean);
+      const isIncome = /(?:pemasukan|masuk|jual|penjualan|gaji|gajian|terima|menerima|dapat|pendapatan|omzet|omset|cair|closing|untung|profit|bonus|thr|komisi|tf\s*masuk|transfer\s*masuk)/i.test(cClean);
+      const isExpense = /(?:pengeluaran|keluar|beli|pembelian|bayar|pembayaran|biaya|ongkir|makan|minum|jajan|kopi|pulsa|listrik|bensin|sewa|tf\s*keluar|transfer\s*keluar|transfer\s*ke)/i.test(cClean);
+      const isSavings = /(?:tabung|tabungan|nabung|simpan|darurat)/i.test(cClean);
+      const isDebt = /(?:utang|hutang|pinjam|pinjaman|kasbon|bon|piutang|cicilan|angsuran)/i.test(cClean);
+      const isExplicitRecord = /(?:catat|rekam|tulis|masukkan|tambah|input)/i.test(cClean);
 
-      // Clean description
-      let desc = text
-        .replace(/\b(?:nex|bot|partner|tolong|bantu|coba|dong|ya|please|bro)\b/gi, '')
-        .replace(/\b(?:catat|rekam|tulis|masukkan|tambah|input)\b/gi, '')
-        .replace(/\b(?:pengeluaran|pemasukan|tabungan|sebesar|senilai|rp|idr)\b/gi, '')
-        .replace(new RegExp(extracted.raw.replace(/[-/\\^$*+?.()|[\]{}]/g, '\\$&'), 'gi'), '')
-        .replace(/\s+/g, ' ')
-        .trim();
+      if (extracted && extracted.value > 0 && (isExplicitRecord || isIncome || isExpense || isSavings || isDebt)) {
+        let type = 'expense';
+        if (isSavings) type = 'savings';
+        else if (isDebt) type = 'debt_payment';
+        else if (isIncome && !cClean.includes('bukan pemasukan')) type = 'income';
+        else if (isExpense) type = 'expense';
 
-      if (!desc || desc.length < 2) {
-        if (type === 'income') desc = 'Pemasukan';
-        else if (type === 'expense') desc = 'Pengeluaran';
-        else if (type === 'savings') desc = 'Tabungan';
-        else desc = 'Transaksi Keuangan';
-      } else {
-        desc = desc.charAt(0).toUpperCase() + desc.slice(1);
+        // Clean description
+        let desc = clauseText
+          .replace(/\b(?:nex|bot|partner|tolong|bantu|coba|dong|ya|please|bro)\b/gi, '')
+          .replace(/\b(?:catat|rekam|tulis|masukkan|tambah|input)\b/gi, '')
+          .replace(/\b(?:pengeluaran|pemasukan|tabungan|sebesar|senilai|rp|idr)\b/gi, '')
+          .replace(new RegExp(extracted.raw.replace(/[-/\\^$*+?.()|[\]{}]/g, '\\$&'), 'gi'), '')
+          .replace(/\s+/g, ' ')
+          .trim();
+
+        if (!desc || desc.length < 2) {
+          if (type === 'income') desc = 'Pemasukan';
+          else if (type === 'expense') desc = 'Pengeluaran';
+          else if (type === 'savings') desc = 'Tabungan';
+          else desc = 'Transaksi Keuangan';
+        } else {
+          desc = desc.charAt(0).toUpperCase() + desc.slice(1);
+        }
+
+        const isBusiness = /(?:bisnis|usaha|toko|proyek|klien|kambing|ternak|dagang|omzet|omset|jual|keynex)/i.test(cClean);
+        let category = 'Umum';
+        if (isBusiness) category = cClean.includes('keynex') ? 'KEYNEX' : 'Bisnis';
+        else if (/makan|minum|kopi|resto|nasi|mie|sarapan|lunch|dinner|jajan|snack|bakso|ayam/i.test(cClean)) category = 'Makanan';
+        else if (/bensin|parkir|tol|gojek|grab|ojek|transport/i.test(cClean)) category = 'Transportasi';
+        else if (/listrik|air|wifi|pulsa|paket\s*data|iuran/i.test(cClean)) category = 'Tagihan & Utilitas';
+        else if (/belanja|baju|sepatu|tas|shopee|tokopedia/i.test(cClean)) category = 'Belanja';
+
+        console.log(`[GeminiService] 💡 Deterministic parser triggered: [${type.toUpperCase()}] ${extracted.value} - ${desc} (${category}, isBusiness: ${isBusiness})`);
+        const recordRes = await this.financeManager.recordTransaction({
+          type,
+          amount: extracted.value,
+          category,
+          description: desc,
+          isBusiness,
+          owner: speakerInfo.role === 'partner' ? 'partner' : 'owner'
+        });
+
+        return {
+          recorded: true,
+          type,
+          amount: extracted.value,
+          description: desc,
+          category,
+          isBusiness,
+          transaction: recordRes.transaction,
+          spsConfirmed: recordRes.spsConfirmed
+        };
       }
+      return null;
+    };
 
-      const isBusiness = /(?:bisnis|usaha|toko|proyek|klien|kambing|ternak|dagang|omzet|omset|jual|keynex)/i.test(clean);
-      let category = 'Umum';
-      if (isBusiness) category = clean.includes('keynex') ? 'KEYNEX' : 'Bisnis';
-      else if (/makan|minum|kopi|resto|nasi|mie|sarapan|lunch|dinner|jajan|snack|bakso|ayam/i.test(clean)) category = 'Makanan';
-      else if (/bensin|parkir|tol|gojek|grab|ojek|transport/i.test(clean)) category = 'Transportasi';
-      else if (/listrik|air|wifi|pulsa|paket\s*data|iuran/i.test(clean)) category = 'Tagihan & Utilitas';
-      else if (/belanja|baju|sepatu|tas|shopee|tokopedia/i.test(clean)) category = 'Belanja';
-
-      console.log(`[GeminiService] 💡 Deterministic parser triggered: [${type.toUpperCase()}] ${extracted.value} - ${desc} (${category}, isBusiness: ${isBusiness})`);
-      const recordRes = await this.financeManager.recordTransaction({
-        type,
-        amount: extracted.value,
-        category,
-        description: desc,
-        isBusiness,
-        owner: speakerInfo.role === 'partner' ? 'partner' : 'owner'
-      });
-
-      return {
-        recorded: true,
-        type,
-        amount: extracted.value,
-        description: desc,
-        category,
-        isBusiness,
-        transaction: recordRes.transaction,
-        spsConfirmed: recordRes.spsConfirmed
-      };
+    if (rawClauses.length > 1) {
+      const multiResults = [];
+      for (const clause of rawClauses) {
+        const res = await parseSingleClause(clause);
+        if (res && res.recorded) {
+          multiResults.push(res.transaction);
+        }
+      }
+      if (multiResults.length > 0) {
+        return {
+          recorded: true,
+          isMulti: true,
+          transactions: multiResults,
+          transaction: multiResults[0]
+        };
+      }
+    } else {
+      return parseSingleClause(text);
     }
+
     return null;
   }
 
@@ -513,9 +550,11 @@ export class GeminiService {
       switch (action) {
         case 'RECORD_TRANSACTION': {
           let finalAmount = parseAmount(data.amount);
-          const userExtracted = extractAmount(userMessageText);
-          if (userExtracted && userExtracted.value > 0) {
-            if (userExtracted.value >= 10000 && (finalAmount <= 2000 || finalAmount !== userExtracted.value)) {
+          // Only correct if amount is suspiciously small (<= 2000) or missing, and user text has a real amount
+          if (!finalAmount || finalAmount <= 2000) {
+            const contextText = `${data.description || ''} ${data.type || ''} ${userMessageText}`;
+            const userExtracted = extractAmount(contextText);
+            if (userExtracted && userExtracted.value >= 10000) {
               console.log(`[GeminiService] 🛡️ Correcting Gemini amount hallucination: ${finalAmount} -> ${userExtracted.value}`);
               finalAmount = userExtracted.value;
             }
@@ -536,9 +575,10 @@ export class GeminiService {
         case 'CORRECT_TRANSACTION': {
           let targetId = data.targetId;
           let finalAmount = data.amount ? parseAmount(data.amount) : null;
-          const userExtracted = extractAmount(userMessageText);
-          if (userExtracted && userExtracted.value > 0) {
-            if (userExtracted.value >= 10000 && (!finalAmount || finalAmount <= 2000 || finalAmount !== userExtracted.value)) {
+          if (!finalAmount || finalAmount <= 2000) {
+            const contextText = `${data.description || ''} ${data.type || ''} ${userMessageText}`;
+            const userExtracted = extractAmount(contextText);
+            if (userExtracted && userExtracted.value >= 10000) {
               finalAmount = userExtracted.value;
             }
           }

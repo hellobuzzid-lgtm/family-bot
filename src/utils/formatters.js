@@ -45,7 +45,40 @@ export function extractAmount(text) {
   const quarterMatch = clean.match(/\bseperempat\s+(?:jt|juta)\b/i);
   if (quarterMatch) return { raw: quarterMatch[0], value: 250000, index: quarterMatch.index };
 
-  // 2. Amounts with suffix: 2jt, 2 juta, 1,5 juta, 500rb, 500 ribu, 500k, 1 miliar, etc.
+  // 2. Compound Million amounts: 1jt 200, 1jt 50 rb, 1jt 50rb, 1 juta 50 ribu, 2jt 500, 2jt 5, 1jt200
+  const compoundJtMatch = clean.match(/(?:rp\.?\s*)?(\d+(?:[.,]\d+)?)\s*(?:jt|juta)\s*(\d+(?:[.,]\d+)?)\s*(rb|ribu|k)?\b/i);
+  if (compoundJtMatch) {
+    const mainJt = parseFloat(compoundJtMatch[1].replace(',', '.'));
+    const subNum = parseFloat(compoundJtMatch[2].replace(',', '.'));
+    const subUnit = compoundJtMatch[3];
+    let subVal = 0;
+    if (subUnit) {
+      subVal = Math.round(subNum * 1000);
+    } else {
+      if (subNum < 10) subVal = Math.round(subNum * 100000);
+      else if (subNum < 1000) subVal = Math.round(subNum * 1000);
+      else subVal = Math.round(subNum);
+    }
+    return {
+      raw: compoundJtMatch[0],
+      value: Math.round(mainJt * 1000000) + subVal,
+      index: compoundJtMatch.index
+    };
+  }
+
+  // 3. Compound Thousands amounts: 50rb 500, 50 ribu 500, 100k 250
+  const compoundRbMatch = clean.match(/(?:rp\.?\s*)?(\d+(?:[.,]\d+)?)\s*(?:rb|ribu|k)\s+(\d{1,3})\b/i);
+  if (compoundRbMatch) {
+    const mainRb = parseFloat(compoundRbMatch[1].replace(',', '.'));
+    const subVal = parseInt(compoundRbMatch[2], 10) || 0;
+    return {
+      raw: compoundRbMatch[0],
+      value: Math.round(mainRb * 1000) + subVal,
+      index: compoundRbMatch.index
+    };
+  }
+
+  // 4. Amounts with suffix: 2jt, 2 juta, 1,5 juta, 500rb, 500 ribu, 500k, 1 miliar, etc.
   const suffixMatch = clean.match(/(?:rp\.?\s*)?(\d+(?:[.,]\d+)?)\s*(miliar|milyar|jt|juta|million|rb|ribu|k|thousand)\b/i);
   if (suffixMatch) {
     const num = parseFloat(suffixMatch[1].replace(',', '.'));

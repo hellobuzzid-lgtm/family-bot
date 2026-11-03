@@ -266,6 +266,35 @@ const t5 = parseAmount('2.000.000');
 assert.strictEqual(t5, 2000000);
 console.log('✅ Tes 5: Input "2.000.000" -> Hasil: Rp' + t5.toLocaleString('id-ID'));
 
+// Tes Kasus Pengguna: 1jt 200 -> Rp1.200.000
+const tUser1 = parseAmount('1jt 200');
+assert.strictEqual(tUser1, 1200000);
+console.log('✅ Tes User 1: Input "1jt 200" -> Hasil: Rp' + tUser1.toLocaleString('id-ID'));
+
+// Tes Kasus Pengguna: 1jt 50 rb -> Rp1.050.000
+const tUser2 = parseAmount('1jt 50 rb');
+assert.strictEqual(tUser2, 1050000);
+console.log('✅ Tes User 2: Input "1jt 50 rb" -> Hasil: Rp' + tUser2.toLocaleString('id-ID'));
+
+// Tes Kasus Pengguna: Multi-Transaksi "pemasukan 1jt 200 dan pengeluaran 1jt 50 rb"
+console.log('\n--- TEST KASUS PENGGUNA: "pemasukan 1jt 200 dan pengeluaran 1jt 50 rb" ---');
+const multiTxResult = await geminiService.checkAndFallbackParseTransaction(
+  'pemasukan 1jt 200 dan pengeluaran 1jt 50 rb',
+  { role: 'owner' }
+);
+assert.strictEqual(multiTxResult.recorded, true);
+assert.strictEqual(multiTxResult.isMulti, true);
+assert.strictEqual(multiTxResult.transactions.length, 2);
+
+const incTx = multiTxResult.transactions.find(t => t.type === 'income');
+const expTx = multiTxResult.transactions.find(t => t.type === 'expense');
+assert.strictEqual(incTx.amount, 1200000, 'Pemasukan harus tepat Rp1.200.000, bukan Rp1.000.000');
+assert.strictEqual(expTx.amount, 1050000, 'Pengeluaran harus tepat Rp1.050.000, bukan Rp1.000.000');
+console.log('1. Multi-transaksi berhasil dicatat terpisah:');
+console.log(`   - Pemasukan  : Rp ${incTx.amount.toLocaleString('id-ID')} (ID: ${incTx.id})`);
+console.log(`   - Pengeluaran: Rp ${expTx.amount.toLocaleString('id-ID')} (ID: ${expTx.id})`);
+console.log('✅ TEST KASUS PENGGUNA BERHASIL LULUS 100%\n');
+
 console.log('\n--- TEST KASUS JUAL KAMBING: "bro catat jual kambing 2jt" ---');
 const goatResult = await geminiService.checkAndFallbackParseTransaction(
   'bro catat jual kambing 2jt',

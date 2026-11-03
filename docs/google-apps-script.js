@@ -243,7 +243,7 @@ function doGet(e) {
         category: catStr,
         description: descStr,
         isBusiness: isBiz,
-        owner: String(row[8] || 'owner')
+        owner: (String(row[8] || '').toLowerCase().includes('partner') || String(row[8] || '').toLowerCase().includes('istri')) ? 'partner' : 'owner'
       };
 
       txList.push(txObj);
@@ -283,7 +283,7 @@ function doGet(e) {
         totalExpense: totalExpense,
         netCashflow: totalIncome - totalExpense
       },
-      transactions: txList.slice(-50).reverse() // recent 50
+      transactions: txList.slice(-200) // sync all recent up to 200 transactions
     };
 
     if (filterSource) {
@@ -464,7 +464,7 @@ function parseRowDate(rawDate) {
   var str = String(rawDate).trim();
   if (/^\d{4}-\d{2}-\d{2}/.test(str)) {
     var parts = str.split(' ')[0].split('-');
-    return new Date(parseInt(parts[0], 10), parseInt(parts[1], 10) - 1, parseInt(parts[2], 10));
+    return new Date(parseInt(parts[0], 10), parseInt(parts[1], 10) - 1, parseInt(parts[2], 10), 12, 0, 0);
   }
   var parsed = new Date(str);
   return isNaN(parsed.getTime()) ? new Date() : parsed;

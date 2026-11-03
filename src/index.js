@@ -36,6 +36,13 @@ async function main() {
     const taskManager = new TaskManager();
     const reminderManager = new ReminderManager(googleSheetsService, routineManager, taskManager, goalTracker);
 
+    // Initial sync with SPS (Single Source of Truth)
+    if (googleSheetsService.isConfigured()) {
+      financeManager.syncWithSpreadsheet().catch(err => {
+        console.warn('⚠️ [FinanceManager] Initial SPS sync warning:', err.message);
+      });
+    }
+
     // 2. Initialize prompt builder
     const promptBuilder = new MasterPromptBuilder(
       memoryManager,
