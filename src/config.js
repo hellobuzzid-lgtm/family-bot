@@ -24,9 +24,14 @@ export function toJid(phone) {
   return norm.includes('@') ? norm : `${norm}@s.whatsapp.net`;
 }
 
-// Storage resolution: Prefer persistent volume /app/storage if mounted on Railway
-const defaultStorage = fs.existsSync('/app/storage') ? '/app/storage' : rootDir;
-const storageDir = process.env.STORAGE_DIR || defaultStorage;
+// Storage resolution: Prefer persistent volume /app/storage if mounted on Railway, otherwise project rootDir
+let resolvedStorage = rootDir;
+if (process.env.STORAGE_DIR && fs.existsSync(process.env.STORAGE_DIR)) {
+  resolvedStorage = process.env.STORAGE_DIR;
+} else if (fs.existsSync('/app/storage') && process.platform !== 'win32') {
+  resolvedStorage = '/app/storage';
+}
+const storageDir = resolvedStorage;
 const dataDir = process.env.DATA_DIR || path.join(storageDir, 'data');
 const authDir = process.env.AUTH_DIR || path.join(storageDir, 'auth_info_baileys');
 
