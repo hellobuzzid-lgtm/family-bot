@@ -531,6 +531,38 @@ export class FinanceManager {
   }
 
   /**
+   * Reset / Clear all transactions (Tab Transaksi Keuangan di SPS & database lokal)
+   */
+  async clearAllTransactions() {
+    this.createBackup('before_clear');
+    const prevCount = this.data.transactions.length;
+    this.data.transactions = [];
+    this.data.balances = {
+      personalBalance: Number(this.data.initialBalances?.personalBalance) || 0,
+      businessBalance: Number(this.data.initialBalances?.businessBalance) || 0,
+      savingsBalance: Number(this.data.initialBalances?.savingsBalance) || 0,
+      emergencyFundBalance: Number(this.data.initialBalances?.emergencyFundBalance) || 0
+    };
+    this.saveData();
+
+    let spsResult = { success: false };
+    if (this.googleSheetsService && this.googleSheetsService.isConfigured()) {
+      try {
+        spsResult = await this.googleSheetsService.resetSpreadsheet();
+      } catch (err) {
+        console.error('[FinanceManager] Error resetting SPS:', err.message);
+      }
+    }
+
+    return {
+      success: true,
+      clearedCount: prevCount,
+      balances: this.data.balances,
+      spsConfirmed: Boolean(spsResult && spsResult.success)
+    };
+  }
+
+  /**
    * AUDIT & RECONCILE DATA INTEGRITY (Section 8)
    */
   auditAndReconcile() {

@@ -74,6 +74,22 @@ function doPost(e) {
       })).setMimeType(ContentService.MimeType.JSON);
     }
 
+    // 2.5 RESET / KOSONGKAN TRANSAKSI SPS (Aksi: RESET_SPS / CLEAR_SPS)
+    if (data.action === 'RESET_SPS' || data.action === 'CLEAR_SPS') {
+      var sheetClear = getOrCreateSheet(ss, 'Transaksi Keuangan', txHeaders, '#1B5E20');
+      var curLastRow = sheetClear.getLastRow();
+      if (curLastRow > 1) {
+        sheetClear.deleteRows(2, curLastRow - 1);
+      }
+      try { updateRecapSheets(ss); } catch (recapErr) { console.warn('Gagal update rekap:', recapErr.message); }
+
+      return ContentService.createTextOutput(JSON.stringify({
+        status: 'success',
+        message: 'Seluruh data transaksi di SPS berhasil dibersihkan/direset.',
+        clearedRows: Math.max(0, curLastRow - 1)
+      })).setMimeType(ContentService.MimeType.JSON);
+    }
+
     // 3. REKONSILIASI TOTAL DARI BOT (OVERWRITE & REFRESH)
     if (data.action === 'RECONCILE_ALL') {
       var sheetRec = getOrCreateSheet(ss, 'Transaksi Keuangan', txHeaders, '#1B5E20');
@@ -411,6 +427,20 @@ function deleteTxRow(sheet, txId) {
     }
   }
   return false;
+}
+
+// =========================================================================
+// OTOMATIS UPDATE REKAP SAAT ADA EDIT MANUAL DI SPREADSHEET
+// =========================================================================
+function onEdit(e) {
+  try {
+    var range = e ? e.range : null;
+    var sheet = range ? range.getSheet() : null;
+    if (sheet && sheet.getName() === 'Transaksi Keuangan') {
+      var ss = SpreadsheetApp.getActiveSpreadsheet();
+      updateRecapSheets(ss);
+    }
+  } catch (_) {}
 }
 
 // =========================================================================

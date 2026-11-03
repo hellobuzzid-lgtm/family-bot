@@ -103,9 +103,23 @@ export class GeminiService {
         const tx = directFinResult.transaction;
         const typeLabel = tx.type === 'income' ? 'Pemasukan' : 'Pengeluaran';
         return `✅ Transaksi berhasil dikoreksi in-place!\n\nID: \`${tx.id}\`\nJenis: *${typeLabel}*\nNominal: *${formatRupiah(tx.amount)}*\nKeterangan: *${tx.description}*\n\nData telah diselaraskan ke Google Spreadsheet (SPS).`;
+      } else if (directFinResult.isResetSPS) {
+        return `🗑️ *SELURUH DATA SPS & DATABASE BERHASIL DIRESET!*\n\n` +
+          `• Seluruh data transaksi di database bot telah dikosongkan.\n` +
+          `• Tab *'Transaksi Keuangan'* di Google Spreadsheet telah dibersihkan.\n` +
+          `• Tab *'Rekap Bulanan'* dan *'Rekap Mingguan'* otomatis diset ulang ke Rp0.\n` +
+          `• Saldo aktif kini kembali ke kondisi awal (Rp0).\n\n` +
+          `✅ Sistem siap mencatat transaksi baru dari nol.`;
       } else if (directFinResult.isDeletion) {
         const tx = directFinResult.transaction;
-        return `✅ Transaksi \`${tx.id}\` (*${formatRupiah(tx.amount)} - ${tx.description}*) telah berhasil dibatalkan/dihapus dari database dan Google Spreadsheet (SPS).`;
+        const typeLabel = tx.type === 'income' ? 'Pemasukan' : 'Pengeluaran';
+        return `🗑️ *TRANSAKSI BERHASIL DIHAPUS / DIBATALKAN!*\n\n` +
+          `• ID: \`${tx.id}\`\n` +
+          `• Jenis: *${typeLabel}*\n` +
+          `• Nominal: *${formatRupiah(tx.amount)}*\n` +
+          `• Keterangan: *${tx.description}*\n\n` +
+          `✅ Data telah dihapus dari database bot dan Google Spreadsheet (SPS).\n` +
+          `📊 Tab 'Rekap Mingguan' dan 'Rekap Bulanan' di SPS otomatis diperbarui.`;
       } else {
         const tx = directFinResult.transaction;
         const typeLabel = tx.type === 'income'
@@ -421,11 +435,23 @@ export class GeminiService {
       return null;
     }
 
-    // 1. Check if user is asking to CORRECT a previous transaction
+    // 1. Check if user is asking to RESET / CLEAR SPS
+    const isResetSPSIntent = /(?:^|\s|[^a-zA-Z0-9])(?:hapus|reset|kosongkan|bersihkan|clear)\s*(?:semua\s*)?(?:data\s*)?(?:sps|spreadsheet|transaksi\s*keuangan|riwayat\s*transaksi)(?:$|\s|[^a-zA-Z0-9])/i.test(clean);
+    if (isResetSPSIntent) {
+      console.log(`[GeminiService] 🚨 Detected RESET / CLEAR SPS intent: "${text}"`);
+      const clearRes = await this.financeManager.clearAllTransactions();
+      return {
+        recorded: true,
+        isResetSPS: true,
+        spsConfirmed: clearRes.spsConfirmed
+      };
+    }
+
+    // 2. Check if user is asking to CORRECT a previous transaction
     const isCorrectionIntent = /(?:^|\s|[^a-zA-Z0-9])(?:salah|(?:di|meng)?koreksi|(?:di|me)?ralat|(?:di|meng)?ubah|(?:di|meng)?ganti|(?:di)?revisi|seharusnya|harusnya|mestinya|bukan\s*(?:pemasukan|pengeluaran|tabungan|utang)|(?:jadi|menjadi)\s*(?:pengeluaran|pemasukan))(?:$|\s|[^a-zA-Z0-9])/i.test(clean);
     
-    // 2. Check if user is asking to CANCEL/DELETE a transaction
-    const isDeletionIntent = /(?:^|\s|[^a-zA-Z0-9])(?:hapus|batal|batalkan|delete|cancel|buang)\s*(?:transaksi|pencatatan|pengeluaran|pemasukan|tadi|kemarin)?(?:$|\s|[^a-zA-Z0-9])/i.test(clean);
+    // 3. Check if user is asking to CANCEL/DELETE a transaction
+    const isDeletionIntent = /(?:^|\s|[^a-zA-Z0-9])(?:hapus|batal|batalkan|delete|cancel|buang)\s*(?:transaksi|pencatatan|pengeluaran|pemasukan|tadi|terakhir|kemarin|barusan)?(?:$|\s|[^a-zA-Z0-9])/i.test(clean);
 
     if (isCorrectionIntent) {
       console.log(`[GeminiService] 🔍 Detected CORRECTION intent: "${text}"`);
@@ -501,7 +527,19 @@ export class GeminiService {
     if (isDeletionIntent) {
       console.log(`[GeminiService] 🔍 Detected DELETION intent: "${text}"`);
       const owner = speakerInfo.role === 'partner' ? 'partner' : 'owner';
-      const matchResult = this.financeManager.findTransactionForCorrection({ text, owner });
+
+      // Check if user specifically asks to delete the last / latest transaction
+      const isLastTxIntent = /(?:tadi|terakhir|barusan|kemarin|terbaru)/i.test(clean);
+      let matchResult = this.financeManager.findTransactionForCorrection({ text, owner });
+
+      if (matchResult.status !== 'found' && (isLastTxIntent || clean.includes('hapus') || clean.includes('batal'))) {
+        const activeTxs = this.financeManager.data.transactions.filter(t => t.status === 'active');
+        if (activeTxs.length > 0) {
+          const lastTx = activeTxs[activeTxs.length - 1];
+          matchResult = { status: 'found', transaction: lastTx };
+        }
+      }
+
       if (matchResult.status === 'found') {
         console.log(`[GeminiService] 💡 Deterministic deletion executing on ID: ${matchResult.transaction.id}`);
         const delRes = await this.financeManager.deleteTransaction(matchResult.transaction.id, {

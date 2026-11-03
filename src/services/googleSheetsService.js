@@ -100,6 +100,20 @@ export class GoogleSheetsService {
   }
 
   /**
+   * Reset / Clear all transactions in Google Sheets (Tab Transaksi Keuangan)
+   */
+  async resetSpreadsheet() {
+    if (!this.isConfigured()) return { success: false, reason: 'NOT_CONFIGURED' };
+
+    const payload = {
+      action: 'RESET_SPS',
+      timestamp: getNow().format('YYYY-MM-DD HH:mm:ss')
+    };
+
+    return this.sendPayload(payload);
+  }
+
+  /**
    * Reconcile all transactions in Google Sheets
    */
   async reconcileAllTransactions(transactions) {
