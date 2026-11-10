@@ -141,9 +141,9 @@ export class WhatsAppBot {
           this.pairingTimeout = null;
         }
 
-        const statusCode = (lastDisconnect?.error instanceof Boom) ? lastDisconnect.error.output.statusCode : null;
+        const statusCode = lastDisconnect?.error?.output?.statusCode || lastDisconnect?.error?.statusCode || ((lastDisconnect?.error instanceof Boom) ? lastDisconnect.error.output?.statusCode : null);
         const errMsg = (lastDisconnect?.error?.message || '').toLowerCase();
-        const isRestartRequired = statusCode === DisconnectReason.restartRequired || statusCode === 515;
+        const isRestartRequired = statusCode === DisconnectReason.restartRequired || statusCode === 515 || errMsg.includes('restart required');
         const isLoggedOut = statusCode === DisconnectReason.loggedOut || statusCode === 401 || statusCode === 403 || errMsg.includes('logged out') || errMsg.includes('bad session');
         const shouldReconnect = !isLoggedOut;
 
