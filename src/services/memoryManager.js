@@ -165,11 +165,51 @@ export class MemoryManager {
         updatedAt: new Date().toISOString()
       },
       {
-        id: 'mem_init_03',
+        id: 'mem_init_cpns',
+        scope: 'owner',
+        category: 'learning',
+        type: MEMORY_TYPES.PLAN,
+        content: `Target Utama: Lulus Seleksi CPNS (SKD & SKB). Jadwal belajar konsisten setiap malam pukul 19:45 WIB dan rutin latihan tryout CAT.`,
+        relevance: 10,
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString()
+      },
+      {
+        id: 'mem_init_stop_judol',
+        scope: 'owner',
+        category: 'finance',
+        type: MEMORY_TYPES.DECISION,
+        content: `Komitmen Mutlak: STOP TOTAL JUDI ONLINE (Zero Tolerance). 100% bebas dari judol, seluruh dana dialokasikan ke modal bisnis halal & tabungan masa depan.`,
+        relevance: 10,
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString()
+      },
+      {
+        id: 'mem_init_sholat',
         scope: 'owner',
         category: 'personal',
         type: MEMORY_TYPES.DECISION,
-        content: `Komitmen prioritas: Menjaga cashflow positif, tertib salat 5 waktu Jambi, olahraga rutin, dan target omzet bulanan.`,
+        content: `Target Spiritual: Rajin dan disiplin sholat 5 waktu tepat waktu (Subuh, Dzuhur, Ashar, Maghrib, Isya) berdasarkan jadwal Kota Jambi.`,
+        relevance: 10,
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString()
+      },
+      {
+        id: 'mem_init_badan_sehat',
+        scope: 'owner',
+        category: 'health',
+        type: MEMORY_TYPES.PLAN,
+        content: `Target Kesehatan: Badan sehat dan bugar dengan latihan fisik/workout sore 4x seminggu (17:00 WIB), hidrasi minimal 2L air/hari, dan tidur cukup.`,
+        relevance: 10,
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString()
+      },
+      {
+        id: 'mem_init_kembangkan_bisnis',
+        scope: 'owner',
+        category: 'business',
+        type: MEMORY_TYPES.DECISION,
+        content: `Target Bisnis: Mengembangkan bisnis KEYNEX dan usaha peternakan kambing, menjaga pencatatan kas SPS disiplin, dan target omzet berkembang.`,
         relevance: 10,
         createdAt: new Date().toISOString(),
         updatedAt: new Date().toISOString()

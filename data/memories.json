@@ -1,0 +1,72 @@
+[
+  {
+    "id": "mem_init_01",
+    "scope": "shared",
+    "category": "relationship",
+    "type": "facts",
+    "content": "Pengguna (Bro) dan calon istri (Calon Istri) sedang mempersiapkan masa depan bersama dan pernikahan.",
+    "relevance": 10,
+    "createdAt": "2026-11-10T10:35:00.000Z",
+    "updatedAt": "2026-11-10T10:35:00.000Z"
+  },
+  {
+    "id": "mem_init_02",
+    "scope": "owner",
+    "category": "business",
+    "type": "facts",
+    "content": "Pengguna menjalankan bisnis teknologi/digital KEYNEX dan usaha peternakan kambing di wilayah Jambi.",
+    "relevance": 10,
+    "createdAt": "2026-11-10T10:35:00.000Z",
+    "updatedAt": "2026-11-10T10:35:00.000Z"
+  },
+  {
+    "id": "mem_init_cpns",
+    "scope": "owner",
+    "category": "learning",
+    "type": "plans",
+    "content": "Target Utama: Lulus Seleksi CPNS (SKD & SKB). Jadwal belajar konsisten setiap malam pukul 19:45 WIB dan rutin latihan tryout CAT.",
+    "relevance": 10,
+    "createdAt": "2026-11-10T10:35:00.000Z",
+    "updatedAt": "2026-11-10T10:35:00.000Z"
+  },
+  {
+    "id": "mem_init_stop_judol",
+    "scope": "owner",
+    "category": "finance",
+    "type": "decisions",
+    "content": "Komitmen Mutlak: STOP TOTAL JUDI ONLINE (Zero Tolerance). 100% bebas dari judol, seluruh dana dialokasikan ke modal bisnis halal & tabungan masa depan.",
+    "relevance": 10,
+    "createdAt": "2026-11-10T10:35:00.000Z",
+    "updatedAt": "2026-11-10T10:35:00.000Z"
+  },
+  {
+    "id": "mem_init_sholat",
+    "scope": "owner",
+    "category": "personal",
+    "type": "decisions",
+    "content": "Target Spiritual: Rajin dan disiplin sholat 5 waktu tepat waktu (Subuh, Dzuhur, Ashar, Maghrib, Isya) berdasarkan jadwal Kota Jambi.",
+    "relevance": 10,
+    "createdAt": "2026-11-10T10:35:00.000Z",
+    "updatedAt": "2026-11-10T10:35:00.000Z"
+  },
+  {
+    "id": "mem_init_badan_sehat",
+    "scope": "owner",
+    "category": "health",
+    "type": "plans",
+    "content": "Target Kesehatan: Badan sehat dan bugar dengan latihan fisik/workout sore 4x seminggu (17:00 WIB), hidrasi minimal 2L air/hari, dan tidur cukup.",
+    "relevance": 10,
+    "createdAt": "2026-11-10T10:35:00.000Z",
+    "updatedAt": "2026-11-10T10:35:00.000Z"
+  },
+  {
+    "id": "mem_init_kembangkan_bisnis",
+    "scope": "owner",
+    "category": "business",
+    "type": "decisions",
+    "content": "Target Bisnis: Mengembangkan bisnis KEYNEX dan usaha peternakan kambing, menjaga pencatatan kas SPS disiplin, dan target omzet berkembang.",
+    "relevance": 10,
+    "createdAt": "2026-11-10T10:35:00.000Z",
+    "updatedAt": "2026-11-10T10:35:00.000Z"
+  }
+]
